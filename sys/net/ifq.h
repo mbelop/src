@@ -42,6 +42,7 @@ struct ifqueue {
 	struct mutex		 ifq_mtx;
 	const struct ifq_ops	*ifq_ops;
 	void			*ifq_q;
+	struct mbuf_list	 ifq_free;
 	unsigned int		 ifq_len;
 	unsigned int		 ifq_oactive;
 
