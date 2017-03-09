@@ -764,6 +764,8 @@ file tmpfs/tmpfs_fifoops.c		tmpfs & fifo
 file net/art.c				art
 file net/bpf.c				bpfilter		needs-count
 file net/bpf_filter.c			bpfilter
+file net/codel.c			pf
+file net/fq_codel.c			pf
 file net/if.c
 file net/ifq.c
 file net/if_ethersubr.c			ether			needs-flag

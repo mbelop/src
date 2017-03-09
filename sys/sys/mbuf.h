@@ -130,6 +130,7 @@ struct	pkthdr {
 	u_int			 ph_rtableid;	/* routing table id */
 	u_int			 ph_ifidx;	/* rcv interface index */
 	u_int8_t		 ph_loopcnt;	/* mbuf is looping in kernel */
+	struct timeval		 ph_timestamp;	/* packet timestamp */
 	struct pkthdr_pf	 pf;
 };
 
