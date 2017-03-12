@@ -423,7 +423,7 @@ if_attachsetup(struct ifnet *ifp)
 
 	ifidx = ifp->if_index;
 
-	mq_init(&ifp->if_inputqueue, 8192, IPL_NET);
+	mq_init(&ifp->if_inputqueue, IFQ_MAXLEN, IPL_NET);
 	task_set(ifp->if_inputtask, if_input_process, (void *)ifidx);
 	task_set(ifp->if_watchdogtask, if_watchdog_task, (void *)ifidx);
 	task_set(ifp->if_linkstatetask, if_linkstate_task, (void *)ifidx);
