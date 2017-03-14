@@ -216,9 +216,10 @@ ifq_attach(struct ifqueue *ifq, const struct ifq_ops *newops, void *opsarg)
 {
 	struct mbuf_list ml = MBUF_LIST_INITIALIZER();
 	struct mbuf_list free_ml = MBUF_LIST_INITIALIZER();
-	struct mbuf *m;
+	struct mbuf *dm, *m, *n;
 	const struct ifq_ops *oldops;
 	void *newq, *oldq;
+	int drops, full;
 
 	newq = newops->ifqop_alloc(ifq->ifq_idx, opsarg);
 
@@ -233,12 +234,27 @@ ifq_attach(struct ifqueue *ifq, const struct ifq_ops *newops, void *opsarg)
 	ifq->ifq_q = newq;
 
 	while ((m = ml_dequeue(&ml)) != NULL) {
-		m = ifq->ifq_ops->ifqop_enq(ifq, m);
-		if (m != NULL) {
-			ifq->ifq_qdrops++;
-			ml_enqueue(&free_ml, m);
-		} else
+		drops = full = 0;
+
+		dm = ifq->ifq_ops->ifqop_enq(ifq, m);
+
+		while (dm != NULL) {
+			if (dm == m)
+				full = 1;
+			else
+				drops++;
+			n = dm->m_nextpkt;
+			ml_enqueue(&free_ml, dm);
+			dm = n;
+		}
+
+		if (!full)
 			ifq->ifq_len++;
+
+		KASSERT(ifq->ifq_len >= drops);
+
+		ifq->ifq_len -= drops;
+		ifq->ifq_qdrops += drops;
 	}
 	mtx_leave(&ifq->ifq_mtx);
 
@@ -263,27 +279,41 @@ ifq_destroy(struct ifqueue *ifq)
 int
 ifq_enqueue(struct ifqueue *ifq, struct mbuf *m)
 {
-	struct mbuf *dm;
+	struct mbuf_list free_ml = MBUF_LIST_INITIALIZER();
+	struct mbuf *dm, *n;
+	int drops = 0, full = 0;
 
 	mtx_enter(&ifq->ifq_mtx);
+
 	dm = ifq->ifq_ops->ifqop_enq(ifq, m);
-	if (dm != m) {
+
+	while (dm != NULL) {
+		if (dm == m)
+			full = 1;
+		else
+			drops++;
+		n = dm->m_nextpkt;
+		ml_enqueue(&free_ml, dm);
+		dm = n;
+	}
+
+	if (!full) {
 		ifq->ifq_packets++;
 		ifq->ifq_bytes += m->m_pkthdr.len;
 		if (ISSET(m->m_flags, M_MCAST))
 			ifq->ifq_mcasts++;
+		ifq->ifq_len++;
 	}
 
-	if (dm == NULL)
-		ifq->ifq_len++;
-	else
-		ifq->ifq_qdrops++;
+	KASSERT(ifq->ifq_len >= drops);
+	ifq->ifq_len -= drops;
+	ifq->ifq_qdrops += drops;
+
 	mtx_leave(&ifq->ifq_mtx);
 
-	if (dm != NULL)
-		m_freem(dm);
+	ml_purge(&free_ml);
 
-	return (dm == m ? ENOBUFS : 0);
+	return (full ? ENOBUFS : 0);
 }
 
 struct mbuf *
