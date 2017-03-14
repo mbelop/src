@@ -157,6 +157,9 @@ const struct pfq_ops * const pfq_fqcodel_ops = &fqcodel_pf_ops;
 /* Default aggregate queue depth */
 static const unsigned int fqcodel_qlimit = 1024;
 
+/* Packet drop threshold */
+static const unsigned int fqcodel_threshold = 64;
+
 /*
  * CoDel implementation
  */
@@ -512,14 +515,57 @@ classify_flow(struct fqcodel *fqc, struct mbuf *m)
 	return (&fqc->flows[index]);
 }
 
+static inline struct mbuf *
+prune_queue(struct ifqueue *ifq, struct fqcodel *fqc)
+{
+	struct mbuf_list ml = MBUF_LIST_INITIALIZER();
+	struct flow *flow = NULL;
+	struct mbuf *m;
+	unsigned int backlog = 0;
+	unsigned int i, qlen;
+
+	/*
+	 * Check the limit for all queues and remove a packet
+	 * from the longest one.
+	 */
+	for (i = 0; i < fqc->nflows; i++) {
+		if (codel_backlog(&fqc->flows[i].cd) > backlog) {
+			flow = &fqc->flows[i];
+			backlog = codel_backlog(&flow->cd);
+		}
+	}
+	KASSERT(flow != NULL);
+
+	/*
+	 * Attempt to drop half of the queue in bytes, but
+	 * no more than fqcodel_threshold individual packets
+	 */
+	backlog >>= 1;
+	qlen = codel_qlength(&flow->cd);
+	for (i = 0; i < MIN(fqcodel_threshold, qlen); i++) {
+		m = codel_commit(&flow->cd, NULL);
+		KASSERT(m != NULL);
+		ml_enqueue(&ml, m);
+
+		fqc->drop_cnt.packets++;
+		fqc->drop_cnt.bytes += m->m_pkthdr.len;
+
+		if (codel_backlog(&flow->cd) <= backlog)
+			break;
+	}
+
+	DPRINTF("%s: dropped %d packets from flow %u\n", __func__, i,
+	    flow->id);
+
+	return (MBUF_LIST_FIRST(&ml));
+}
+
 struct mbuf *
 fqcodel_enq(struct ifqueue *ifq, struct mbuf *m)
 {
 	struct fqcodel *fqc = ifq->ifq_q;
 	struct flow *flow;
-	unsigned int backlog = 0;
 	int64_t now;
-	int i;
 
 	flow = classify_flow(fqc, m);
 	if (flow == NULL)
@@ -536,28 +582,8 @@ fqcodel_enq(struct ifqueue *ifq, struct mbuf *m)
 		    flow->id, flow->deficit);
 	}
 
-	/*
-	 * Check the limit for all queues and remove a packet
-	 * from the longest one.
-	 */
-	if (ifq_len(ifq) >= fqcodel_qlimit) {
-		for (i = 0; i < fqc->nflows; i++) {
-			if (codel_backlog(&fqc->flows[i].cd) > backlog) {
-				flow = &fqc->flows[i];
-				backlog = codel_backlog(&flow->cd);
-			}
-		}
-
-		KASSERT(flow != NULL);
-		m = codel_commit(&flow->cd, NULL);
-
-		fqc->drop_cnt.packets++;
-		fqc->drop_cnt.bytes += m->m_pkthdr.len;
-
-		DPRINTF("%s: dropping from flow %u\n", __func__,
-		    flow->id);
-		return (m);
-	}
+	if (ifq_len(ifq) >= fqc->qlimit)
+		return (prune_queue(ifq, fqc));
 
 	return (NULL);
 }
