@@ -1420,7 +1420,7 @@ pfctl_check_qassignments(struct pf_ruleset *rs)
 	if (rs->anchor->path[0] == 0) {
 		TAILQ_FOREACH(qi, &rootqs, entries) {
 			flags = pfctl_find_childqs(qi);
-			if (!(flags & HFSC_DEFAULTCLASS))
+			if (!(flags & PFQS_DEFAULT))
 				errx(1, "no default queue specified");
 		}
 	}

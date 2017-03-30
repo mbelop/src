@@ -1205,9 +1205,15 @@ print_queuespec(struct pf_queuespec *q)
 		printf(" parent %s", q->parent);
 	else if (q->ifname[0])
 		printf(" on %s", q->ifname);
-	print_scspec(" bandwidth ", &q->linkshare);
-	print_scspec(", min ", &q->realtime);
-	print_scspec(", max ", &q->upperlimit);
+	if (q->flowqueue.flows > 0) {
+		printf(" flows %u", q->flowqueue.flows);
+		if (q->flowqueue.quantum > 0)
+			printf(" quantum %u", q->flowqueue.quantum);
+	} else {
+		print_scspec(" bandwidth ", &q->linkshare);
+		print_scspec(", min ", &q->realtime);
+		print_scspec(", max ", &q->upperlimit);
+	}
 	if (q->flags & HFSC_DEFAULTCLASS)
 		printf(" default");
 	if (q->qlimit)

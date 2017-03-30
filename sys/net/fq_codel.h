@@ -23,6 +23,27 @@ struct fqcodel_pktcntr {
 	uint64_t		bytes;
 };
 
+struct fqcodel_stats {
+	struct fqcodel_pktcntr 	xmit_cnt;
+	struct fqcodel_pktcntr 	drop_cnt;
+
+	uint32_t		qlength;
+	uint32_t		qlimit;
+
+	uint32_t		flows;
+	uint32_t		_unused;   /* padding */
+
+	uint32_t		minqlen;
+	uint32_t		maxqlen;
+
+	/* the values below are used to calculate standard deviation */
+	uint64_t		qlensum;   /* sum of queue lenghts */
+	uint64_t		qlensumsq; /* sum of squared queue lenghts */
+};
+
+#ifdef _KERNEL
 extern const struct ifq_ops * const ifq_fqcodel_ops;
+extern const struct pfq_ops * const pfq_fqcodel_ops;
+#endif	/* _KERNEL */
 
 #endif	/* _NET_FQ_CODEL_H_ */

@@ -1310,6 +1310,13 @@ struct pf_queue_scspec {
 	u_int			d;
 };
 
+struct pf_queue_fqspec {
+	u_int		flows;
+	u_int		quantum;
+	u_int		interval;
+	u_int		target;
+};
+
 struct pf_queuespec {
 	TAILQ_ENTRY(pf_queuespec)	 entries;
 	char				 qname[PF_QNAME_SIZE];
@@ -1318,12 +1325,17 @@ struct pf_queuespec {
 	struct pf_queue_scspec		 realtime;
 	struct pf_queue_scspec		 linkshare;
 	struct pf_queue_scspec		 upperlimit;
+	struct pf_queue_fqspec		 flowqueue;
 	struct pfi_kif			*kif;
 	u_int				 flags;
 	u_int				 qlimit;
 	u_int32_t			 qid;
 	u_int32_t			 parent_qid;
 };
+
+#define PFQS_HFSC			0x0000
+#define PFQS_FQCODEL			0x0001
+#define PFQS_DEFAULT			0x1000
 
 struct priq_opts {
 	int		flags;
@@ -1343,6 +1355,13 @@ struct hfsc_opts {
 	u_int		ulsc_d;
 	u_int		ulsc_m2;
 	int		flags;
+};
+
+struct pfq_ops {
+	void		*(*pfq_alloc)(struct ifnet *);
+	int		 (*pfq_addqueue)(void *, struct pf_queuespec *);
+	void		 (*pfq_free)(void *);
+	int		 (*pfq_qstats)(struct pf_queuespec *, void *, int *);
 };
 
 struct pf_tagname {

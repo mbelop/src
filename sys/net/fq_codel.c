@@ -102,6 +102,19 @@ int		 fqcodel_pf_addqueue(void *, struct pf_queuespec *);
 void		 fqcodel_pf_free(void *);
 int		 fqcodel_pf_qstats(struct pf_queuespec *, void *, int *);
 
+/*
+ * pf queue glue.
+ */
+
+static const struct pfq_ops fqcodel_pf_ops = {
+	fqcodel_pf_alloc,
+	fqcodel_pf_addqueue,
+	fqcodel_pf_free,
+	fqcodel_pf_qstats
+};
+
+const struct pfq_ops * const pfq_fqcodel_ops = &fqcodel_pf_ops;
+
 /* Default aggregate queue depth */
 static const unsigned int fqcodel_qlimit = 1024;
 
@@ -417,6 +430,9 @@ fqcodel_pf_addqueue(void *arg, struct pf_queuespec *qs)
 
 	KASSERT(qs->parent_qid == 0);
 
+	if (qs->flowqueue.flows == 0 || qs->flowqueue.flows > M_FLOWID_MASK)
+		return (EINVAL);
+
 	fqc->nflows = qs->flowqueue.flows;
 	fqc->quantum = qs->flowqueue.quantum;
 	if (qs->qlimit > 0)
@@ -458,7 +474,59 @@ fqcodel_pf_free(void *arg)
 int
 fqcodel_pf_qstats(struct pf_queuespec *qs, void *ubuf, int *nbytes)
 {
-	return (EBADF);
+	struct ifnet *ifp = qs->kif->pfik_ifp;
+	struct fqcodel_stats stats;
+	struct fqcodel *fqc;
+	unsigned int i, qlen;
+	int error = 0;
+
+	if (ifp == NULL)
+		return (EBADF);
+
+	if (*nbytes < sizeof(stats))
+		return (EINVAL);
+
+	memset(&stats, 0, sizeof(stats));
+
+	/* XXX: multi-q? */
+	fqc = ifq_q_enter(&ifp->if_snd, ifq_fqcodel_ops);
+	if (fqc == NULL)
+		return (EBADF);
+
+	stats.xmit_cnt = fqc->xmit_cnt;
+	stats.drop_cnt = fqc->drop_cnt;
+
+	stats.qlength = ifq_len(&ifp->if_snd);
+	stats.qlimit = fqc->qlimit;
+
+	stats.flows = stats.maxqlen = stats.minqlen = 0;
+	stats.qlensum = stats.qlensumsq = 0;
+
+	for (i = 0; i < fqc->nflows; i++) {
+		qlen = codel_qlength(&fqc->flows[i].cd);
+		if (qlen == 0)
+			continue;
+		if (stats.minqlen == 0)
+			stats.minqlen = qlen;
+		else
+			stats.minqlen = MIN(stats.minqlen, qlen);
+		if (stats.maxqlen == 0)
+			stats.maxqlen = qlen;
+		else
+			stats.maxqlen = MAX(stats.maxqlen, qlen);
+		stats.flows++;
+
+		stats.qlensum += qlen;
+		stats.qlensumsq += (uint64_t)qlen * (uint64_t)qlen;
+	}
+
+	ifq_q_leave(&ifp->if_snd, fqc);
+
+	if ((error = copyout((caddr_t)&stats, ubuf, sizeof(stats))) != 0)
+		return (error);
+
+	*nbytes = sizeof(stats);
+	return (0);
 }
 
 unsigned int
