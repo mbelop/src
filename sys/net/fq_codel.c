@@ -61,6 +61,8 @@ struct fqcodel {
 
 	struct flow		*flows;
 
+	struct codel_params	 cparams;
+
 	unsigned int		 nflows;
 	unsigned int		 qlimit;
 	int			 quantum;
@@ -251,7 +253,7 @@ fqcodel_deq_begin(struct ifqueue *ifq, void **cookiep)
 		if (SIMPLEQ_EMPTY(fq))
 			continue;
 
-		m = codel_dequeue(&flow->cd, fqc->quantum, &now,
+		m = codel_dequeue(&flow->cd, &fqc->cparams, &now,
 		    &ifq->ifq_free, &dpkts, &dbytes);
 
 		if (dpkts > 0) {
@@ -366,7 +368,7 @@ fqcodel_deq_begin(struct ifqueue *ifq, void **cookiep)
 
 	for (flow = first_flow(fqc, &fq); flow != NULL;
 	     flow = next_flow(fqc, flow, &fq)) {
-		m = codel_dequeue(&flow->cd, fqc->quantum, &now,
+		m = codel_dequeue(&flow->cd, &fqc->cparams, &now,
 		    &ifq->ifq_free, &dpkts, &dbytes);
 
 		if (dpkts > 0) {
@@ -444,6 +446,9 @@ fqcodel_pf_addqueue(void *arg, struct pf_queuespec *qs)
 	else
 		fqc->quantum = ifp->if_mtu + max_linkhdr;
 
+	codel_initparams(&fqc->cparams, qs->flowqueue.target,
+	    qs->flowqueue.interval, fqc->quantum);
+
 	fqc->flows = mallocarray(fqc->nflows, sizeof(struct flow),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
@@ -456,8 +461,10 @@ fqcodel_pf_addqueue(void *arg, struct pf_queuespec *qs)
 	}
 #endif
 
-	printf("fq-codel on %s: %d queues %d deep, quantum %d\n",
-	    ifp->if_xname, fqc->nflows, fqc->qlimit, fqc->quantum);
+	printf("fq-codel on %s: %d queues %d deep, quantum %d target %lums "
+	    "interval %lums\n", ifp->if_xname, fqc->nflows, fqc->qlimit,
+	    fqc->quantum, fqc->cparams.target.tv_usec / 1000,
+	    fqc->cparams.interval.tv_usec / 1000);
 
 	return (0);
 }
@@ -467,6 +474,7 @@ fqcodel_pf_free(void *arg)
 {
 	struct fqcodel *fqc = arg;
 
+	codel_freeparams(&fqc->cparams);
 	free(fqc->flows, M_DEVBUF, fqc->nflows * sizeof(struct flow));
 	free(fqc, M_DEVBUF, sizeof(struct fqcodel));
 }
@@ -498,6 +506,11 @@ fqcodel_pf_qstats(struct pf_queuespec *qs, void *ubuf, int *nbytes)
 
 	stats.qlength = ifq_len(&ifp->if_snd);
 	stats.qlimit = fqc->qlimit;
+
+	stats.target = fqc->cparams.target.tv_sec * 1000000 +
+	    fqc->cparams.target.tv_usec;
+	stats.interval = fqc->cparams.interval.tv_sec * 1000000 +
+	    fqc->cparams.interval.tv_usec;
 
 	stats.flows = stats.maxqlen = stats.minqlen = 0;
 	stats.qlensum = stats.qlensumsq = 0;

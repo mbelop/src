@@ -30,13 +30,25 @@ struct codel {
 	struct timeval	 next;		/* Next interval */
 };
 
+struct codel_params {
+	struct timeval	 target;
+	struct timeval	 interval;
+	int		 quantum;
+
+	uint32_t	*intervals;
+};
+
+void		 codel_initparams(struct codel_params *, unsigned int,
+		    unsigned int, int);
+void		 codel_freeparams(struct codel_params *);
 void		 codel_gettime(struct timeval *);
 unsigned int	 codel_backlog(struct codel *);
 unsigned int	 codel_qlength(struct codel *);
 void		 codel_enqueue(struct codel *, struct timeval *,
 		    struct mbuf *);
-struct mbuf	*codel_dequeue(struct codel *, int, struct timeval *,
-		    struct mbuf_list *, unsigned int *, unsigned int *);
+struct mbuf	*codel_dequeue(struct codel *, struct codel_params *,
+		    struct timeval *, struct mbuf_list *, unsigned int *,
+		    unsigned int *);
 struct mbuf	*codel_commit(struct codel *, struct mbuf *);
 void		 codel_purge(struct codel *, struct mbuf_list *ml);
 

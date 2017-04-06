@@ -52,10 +52,7 @@
 #include <net/codel.h>
 
 /* Delay target, 5ms */
-static const struct timeval codel_target = { 0, 5000 };
-
-/* Default interval, 100ms RTT */
-static const struct timeval codel_interval = { 0, 100000 };
+static const unsigned int codel_target = 5000;
 
 #ifdef CODEL_FREEBSD
 /* Grace period after last drop, 8 * 100ms RTT */
@@ -109,6 +106,63 @@ static const uint32_t codel_intervals[] = {
 	  5057,  5051,  5044,  5038,  5032,  5025,  5019,  5013,  5006
 };
 
+/* Convert microsecond counter to a timeval */
+static inline void
+timerset(struct timeval *tv, unsigned int us)
+{
+	tv->tv_sec = 0;
+	tv->tv_usec = us;
+	while (tv->tv_usec >= 1000000) {
+		tv->tv_sec++;
+		tv->tv_usec -= 1000000;
+	}
+}
+
+void
+codel_initparams(struct codel_params *cp, unsigned int target,
+    unsigned int interval, int quantum)
+{
+	uint64_t mult;
+	unsigned int i;
+
+	/*
+	 * Update tracking intervals according to the the user-supplied value
+	 */
+	if (interval > codel_intervals[0]) {
+		/* Select either specified target or 10% of an interval */
+		timerset(&cp->target, MAX(target, interval / 10));
+		timerset(&cp->interval, interval);
+
+		/* convert from timeval to microseconds */
+		mult = cp->interval.tv_sec * 1000000 + cp->interval.tv_usec;
+		/* scale up */
+		mult *= 1000;
+		/* divide by the original interval */
+		mult /= codel_intervals[0];
+
+		/* Prepare table of intervals */
+		cp->intervals = mallocarray(nitems(codel_intervals),
+		    sizeof(codel_intervals[0]), M_DEVBUF, M_WAITOK | M_ZERO);
+		for (i = 0; i < nitems(codel_intervals); i++)
+			cp->intervals[i] = (codel_intervals[i] * mult) / 1000;
+	} else {
+		timerset(&cp->target, MAX(target, codel_target));
+		timerset(&cp->interval, codel_intervals[0]);
+		cp->intervals = (uint32_t *)codel_intervals;
+	}
+
+	cp->quantum = quantum;
+}
+
+void
+codel_freeparams(struct codel_params *cp)
+{
+	if (cp->intervals != codel_intervals)
+		free(cp->intervals, M_DEVBUF, nitems(codel_intervals) *
+		    sizeof(codel_intervals[0]));
+	cp->intervals = NULL;
+}
+
 void
 codel_gettime(struct timeval *tvp)
 {
@@ -146,14 +200,14 @@ codel_enqueue(struct codel *cd, struct timeval *now, struct mbuf *m)
  * in the current one relative to the provided timestamp.
  */
 static inline void
-control_law(struct codel *cd, struct timeval *rts)
+control_law(struct codel *cd, struct codel_params *cp, struct timeval *rts)
 {
 	struct timeval itv;
 	unsigned int idx;
 
 	idx = min(cd->drops, nitems(codel_intervals) - 1);
 	itv.tv_sec = 0;
-	itv.tv_usec = codel_intervals[idx];
+	itv.tv_usec = cp->intervals[idx];
 	timeradd(rts, &itv, &cd->next);
 }
 
@@ -170,7 +224,8 @@ control_law(struct codel *cd, struct timeval *rts)
  * packet on the bottleneck).
  */
 static inline struct mbuf *
-codel_next(struct codel *cd, struct timeval *now, int quantum, int *drop)
+codel_next(struct codel *cd, struct codel_params *cp, struct timeval *now,
+    int *drop)
 {
 	struct timeval delay;
 	struct mbuf *m;
@@ -186,7 +241,7 @@ codel_next(struct codel *cd, struct timeval *now, int quantum, int *drop)
 	}
 
 	timersub(now, &m->m_pkthdr.ph_timestamp, &delay);
-	if (timercmp(&delay, &codel_target, <) || cd->backlog <= quantum) {
+	if (timercmp(&delay, &cp->target, <) || cd->backlog <= cp->quantum) {
 		/*
 		 * Went below target - stay below for at least one interval
 		 */
@@ -197,9 +252,9 @@ codel_next(struct codel *cd, struct timeval *now, int quantum, int *drop)
 	if (!timerisset(&cd->start)) {
 		/*
 		 * Just went above from below.  If we stay above the
-		 * target for at least 100ms we'll say it's ok to drop.
+		 * target for at least RTT we'll say it's ok to drop.
 		 */
-		timeradd(now, &codel_interval, &cd->start);
+		timeradd(now, &cp->interval, &cd->start);
 	} else if (timercmp(now, &cd->start, >)) {
 		*drop = 1;
 	}
@@ -207,7 +262,7 @@ codel_next(struct codel *cd, struct timeval *now, int quantum, int *drop)
 }
 
 struct mbuf *
-codel_dequeue(struct codel *cd, int quantum, struct timeval *now,
+codel_dequeue(struct codel *cd, struct codel_params *cp, struct timeval *now,
     struct mbuf_list *ml, unsigned int *dpkts, unsigned int *dbytes)
 {
 	struct timeval diff;
@@ -219,7 +274,7 @@ codel_dequeue(struct codel *cd, int quantum, struct timeval *now,
 
 	*dpkts = *dbytes = 0;
 
-	if ((m = codel_next(cd, now, quantum, &drop)) == NULL) {
+	if ((m = codel_next(cd, cp, now, &drop)) == NULL) {
 		cd->dropping = 0;
 		return (NULL);
 	}
@@ -247,12 +302,12 @@ codel_dequeue(struct codel *cd, int quantum, struct timeval *now,
 			(*dpkts)++;
 			*dbytes += m->m_pkthdr.len;
 
-			m = codel_next(cd, now, quantum, &drop);
+			m = codel_next(cd, cp, now, &drop);
 
 			if (!drop)
 				cd->dropping = 0;
 			else
-				control_law(cd, &cd->next);
+				control_law(cd, cp, &cd->next);
 		}
 	} else if (drop) {
 		m = codel_commit(cd, m);
@@ -261,7 +316,7 @@ codel_dequeue(struct codel *cd, int quantum, struct timeval *now,
 		(*dpkts)++;
 		*dbytes += m->m_pkthdr.len;
 
-		m = codel_next(cd, now, quantum, &drop);
+		m = codel_next(cd, cp, now, &drop);
 
 		cd->dropping = 1;
 
@@ -280,7 +335,7 @@ codel_dequeue(struct codel *cd, int quantum, struct timeval *now,
 				cd->drops = 1;
 		} else
 			cd->drops = 1;
-		control_law(cd, now);
+		control_law(cd, cp, now);
 #else
 		delta = cd->drops - cd->ldrops;
 		if (delta > 1) {
@@ -298,7 +353,7 @@ codel_dequeue(struct codel *cd, int quantum, struct timeval *now,
 				cd->drops = 1;
 		} else
 			cd->drops = 1;
-		control_law(cd, now);
+		control_law(cd, cp, now);
 		cd->ldrops = cd->drops;
 #endif
 	}

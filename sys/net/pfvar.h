@@ -1313,8 +1313,8 @@ struct pf_queue_scspec {
 struct pf_queue_fqspec {
 	u_int		flows;
 	u_int		quantum;
-	u_int		interval;
 	u_int		target;
+	u_int		interval;
 };
 
 struct pf_queuespec {

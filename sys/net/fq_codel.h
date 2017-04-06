@@ -33,6 +33,9 @@ struct fqcodel_stats {
 	uint32_t		flows;
 	uint32_t		_unused;   /* padding */
 
+	uint32_t		target;
+	uint32_t		interval;
+
 	uint32_t		minqlen;
 	uint32_t		maxqlen;
 

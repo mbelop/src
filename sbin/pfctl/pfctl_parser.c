@@ -1206,9 +1206,12 @@ print_queuespec(struct pf_queuespec *q)
 	else if (q->ifname[0])
 		printf(" on %s", q->ifname);
 	if (q->flowqueue.flows > 0) {
-		printf(" flows %u", q->flowqueue.flows);
 		if (q->flowqueue.quantum > 0)
 			printf(" quantum %u", q->flowqueue.quantum);
+		if (q->flowqueue.interval > 0)
+			printf(" interval %ums", q->flowqueue.interval / 1000);
+		if (q->flowqueue.target > 0)
+			printf(" target %ums", q->flowqueue.target / 1000);
 	} else {
 		print_scspec(" bandwidth ", &q->linkshare);
 		print_scspec(", min ", &q->realtime);
