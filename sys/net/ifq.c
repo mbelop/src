@@ -82,6 +82,8 @@ ifq_serialize(struct ifqueue *ifq, struct task *t)
 		TAILQ_INSERT_TAIL(&ifq->ifq_task_list, t, t_entry);
 	}
 
+	ifq->ifq_tgen++;
+
 	if (ifq->ifq_serializer == NULL) {
 		ifq->ifq_serializer = curcpu();
 

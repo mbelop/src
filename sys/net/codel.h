@@ -31,6 +31,10 @@ struct codel {
 };
 
 struct codel_params {
+	struct timeval	 tstamp;
+	int64_t		 tgen;
+	int		 ticks;
+
 	struct timeval	 target;
 	struct timeval	 interval;
 	int		 quantum;
@@ -41,7 +45,8 @@ struct codel_params {
 void		 codel_initparams(struct codel_params *, unsigned int,
 		    unsigned int, int);
 void		 codel_freeparams(struct codel_params *);
-void		 codel_gettime(struct timeval *);
+void		 codel_gettime(struct codel_params *, struct timeval *,
+		    long long gen);
 unsigned int	 codel_backlog(struct codel *);
 unsigned int	 codel_qlength(struct codel *);
 void		 codel_enqueue(struct codel *, struct timeval *,

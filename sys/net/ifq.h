@@ -40,6 +40,7 @@ struct ifqueue {
 
 	/* mbuf handling */
 	struct mutex		 ifq_mtx;
+	uint32_t		 ifq_tgen;
 	const struct ifq_ops	*ifq_ops;
 	void			*ifq_q;
 	struct mbuf_list	 ifq_free;

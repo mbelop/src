@@ -194,7 +194,7 @@ fqcodel_enq(struct ifqueue *ifq, struct mbuf *m)
 	if (flow == NULL)
 		return (m);
 
-	codel_gettime(&now);
+	codel_gettime(&fqc->cparams, &now, -1);
 	codel_enqueue(&flow->cd, &now, m);
 
 	if (!flow->active) {
@@ -226,7 +226,7 @@ fqcodel_deq_begin(struct ifqueue *ifq, void **cookiep)
 	if ((fqc->flags & FQCF_FIXED_QUANTUM) == 0)
 		fqc->quantum = ifp->if_mtu + max_linkhdr;
 
-	codel_gettime(&now);
+	codel_gettime(&fqc->cparams, &now, ifq->ifq_tgen);
 
 	do {
 		if (!SIMPLEQ_EMPTY(&fqc->newq))
@@ -364,7 +364,7 @@ fqcodel_deq_begin(struct ifqueue *ifq, void **cookiep)
 	if ((fqc->flags & FQCF_FIXED_QUANTUM) == 0)
 		fqc->quantum = ifp->if_mtu + max_linkhdr;
 
-	codel_gettime(&now);
+	codel_gettime(&fqc->cparams, &now, ifq->ifq_tgen);
 
 	for (flow = first_flow(fqc, &fq); flow != NULL;
 	     flow = next_flow(fqc, flow, &fq)) {

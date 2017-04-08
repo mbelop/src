@@ -62,7 +62,7 @@ static const struct timeval codel_grace = { 0, 800000 };
 static const struct timeval codel_grace = { 1, 600000 };
 #endif
 
-/* First 400 "100 / sqrt(x)" intervarls, us */
+/* First 399 "100 / sqrt(x)" intervarls, us */
 static const uint32_t codel_intervals[] = {
 	100000, 70711, 57735, 50000, 44721, 40825, 37796, 35355, 33333, 31623,
 	 30151, 28868, 27735, 26726, 25820, 25000, 24254, 23570, 22942, 22361,
@@ -125,6 +125,8 @@ codel_initparams(struct codel_params *cp, unsigned int target,
 	uint64_t mult;
 	unsigned int i;
 
+	memset(cp, 0, sizeof(*cp));
+
 	/*
 	 * Update tracking intervals according to the the user-supplied value
 	 */
@@ -152,6 +154,8 @@ codel_initparams(struct codel_params *cp, unsigned int target,
 	}
 
 	cp->quantum = quantum;
+
+	cp->tgen = -1;
 }
 
 void
@@ -164,14 +168,26 @@ codel_freeparams(struct codel_params *cp)
 }
 
 void
-codel_gettime(struct timeval *tvp)
+codel_gettime(struct codel_params *cp, struct timeval *tvp, long long tgen)
 {
-	/* 1ms precision is required to make a decision */
-#if defined(HZ) && HZ >= 1000
-	getmicrouptime(tvp);
-#else
-	microuptime(tvp);
-#endif
+	extern int ticks;
+
+	/*
+	 * Read the hardware timestamp:
+	 * 1) on enqueue; 2) on the next ifq_serialize; 3) when ifq_serialize
+	 * runs for a longer than one tick.
+	 */
+	if (tgen == -1 || tgen != cp->tgen || ticks - cp->ticks > 0)
+		microuptime(&cp->tstamp);
+
+	/* Don't update tgen on enqueue */
+	if (tgen != -1)
+		cp->tgen = tgen;
+
+	/* It's better to notice if timer runs during ifq_serialize */
+	cp->ticks = ticks;
+
+	*tvp = cp->tstamp;
 }
 
 unsigned int
