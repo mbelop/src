@@ -40,7 +40,7 @@
 
 #ifdef CRYPTO
 #include <crypto/cryptodev.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/xform.h>
 #include <crypto/cryptosoft.h>
 #endif
@@ -406,7 +406,7 @@ glxsb_crypto_newsession(uint32_t *sidp, struct cryptoini *cri)
 					return (ENOMEM);
 				}
 				ses->ses_swd_enc = swd;
-				txf = &enc_xform_rijndael128;
+				txf = &enc_xform_aes;
 				if (txf->ctxsize > 0) {
 					swd->sw_kschedule =
 					    malloc(txf->ctxsize,
