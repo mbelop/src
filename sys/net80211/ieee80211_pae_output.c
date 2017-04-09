@@ -106,7 +106,8 @@ ieee80211_send_eapol_key(struct ieee80211com *ic, struct mbuf *m,
 			info &= ~EAPOL_KEY_ENCRYPTED;
 			BE_WRITE_2(key->info, info);
 		}
-		ieee80211_eapol_key_encrypt(ic, key, ptk->kek);
+		ieee80211_eapol_key_encrypt(ic, key, ic->ic_eapol_ctx[1],
+		    ptk->kek);
 
 		if ((info & EAPOL_KEY_VERSION_MASK) != EAPOL_KEY_DESC_V1) {
 			/* AES Key Wrap adds 8 bytes + padding */
@@ -116,7 +117,7 @@ ieee80211_send_eapol_key(struct ieee80211com *ic, struct mbuf *m,
 	}
 #endif
 	if (info & EAPOL_KEY_KEYMIC)
-		ieee80211_eapol_key_mic(key, ptk->kck);
+		ieee80211_eapol_key_mic(key, ic->ic_eapol_ctx[1], ptk->kck);
 
 #ifndef IEEE80211_STA_ONLY
 	/* start a 100ms timeout if an answer is expected from supplicant */
