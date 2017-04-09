@@ -42,7 +42,7 @@
 #include <sys/dkio.h>
 
 #include <crypto/cryptodev.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/md5.h>
 #include <crypto/sha1.h>
 #include <crypto/sha2.h>
@@ -357,15 +357,14 @@ out:
 int
 sr_crypto_encrypt(u_char *p, u_char *c, u_char *key, size_t size, int alg)
 {
-	rijndael_ctx		ctx;
-	int			i, rv = 1;
+	AES_CTX			ctx;
+	int			rv = 1;
 
 	switch (alg) {
 	case SR_CRYPTOM_AES_ECB_256:
-		if (rijndael_set_key_enc_only(&ctx, key, 256) != 0)
+		if (AES_Setkey(&ctx, key, 32) != 0)
 			goto out;
-		for (i = 0; i < size; i += RIJNDAEL128_BLOCK_LEN)
-			rijndael_encrypt(&ctx, &p[i], &c[i]);
+		AES_Encrypt_ECB(&ctx, p, c, size / AES_BLOCK_LEN);
 		rv = 0;
 		break;
 	default:
@@ -383,15 +382,14 @@ out:
 int
 sr_crypto_decrypt(u_char *c, u_char *p, u_char *key, size_t size, int alg)
 {
-	rijndael_ctx		ctx;
-	int			i, rv = 1;
+	AES_CTX			ctx;
+	int			rv = 1;
 
 	switch (alg) {
 	case SR_CRYPTOM_AES_ECB_256:
-		if (rijndael_set_key(&ctx, key, 256) != 0)
+		if (AES_Setkey(&ctx, key, 32) != 0)
 			goto out;
-		for (i = 0; i < size; i += RIJNDAEL128_BLOCK_LEN)
-			rijndael_decrypt(&ctx, &c[i], &p[i]);
+		AES_Decrypt_ECB(&ctx, c, p, size / AES_BLOCK_LEN);
 		rv = 0;
 		break;
 	default:

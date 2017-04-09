@@ -29,6 +29,12 @@
 #ifndef AES_MAXROUNDS
 #define AES_MAXROUNDS	(14)
 #endif
+#ifndef AES_MAXKEYBITS
+#define AES_MAXKEYBITS	(256)
+#endif
+#ifndef AES_MAXKEYBYTES
+#define AES_MAXKEYBYTES	(AES_MAXKEYBITS/8)
+#endif
 
 typedef struct aes_ctx {
 	uint32_t sk[60];
