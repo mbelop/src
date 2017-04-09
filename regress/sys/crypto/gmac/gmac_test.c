@@ -18,7 +18,7 @@
  */
 
 #include <sys/param.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/gmac.h>
 #include <err.h>
 #include <errno.h>

@@ -3,7 +3,7 @@
 DIR=${.CURDIR}/../../../../sys
 
 PROG=	gmac_test
-SRCS+=	rijndael.c gmac.c gmac_test.c
+SRCS+=	aes.c gmac.c gmac_test.c
 CDIAGFLAGS=	-Wall
 CDIAGFLAGS+=	-Werror
 CDIAGFLAGS+=	-Wpointer-arith
