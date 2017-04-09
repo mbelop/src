@@ -20,7 +20,7 @@ CDIAGFLAGS+=	-Wshadow
 REGRESS_ROOT_TARGETS=	run-regress-${PROG}
 
 .PATH:	${DIR}/crypto
-SRCS+=	cast.c ecb_enc.c ecb3_enc.c gmac.c rijndael.c set_key.c
+SRCS+=	cast.c ecb_enc.c ecb3_enc.c gmac.c aes.c set_key.c
 SRCS+=	chachapoly.c poly1305.c
 SRCS+=	xform.c
 
