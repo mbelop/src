@@ -42,7 +42,7 @@
 #include <sys/dkio.h>
 
 #include <crypto/cryptodev.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/md5.h>
 #include <crypto/sha1.h>
 #include <crypto/sha2.h>
@@ -357,15 +357,20 @@ out:
 int
 sr_crypto_encrypt(u_char *p, u_char *c, u_char *key, size_t size, int alg)
 {
-	rijndael_ctx		ctx;
+	AES_CTX			*ctx = NULL;
 	int			i, rv = 1;
+
+	assertwaitok();
 
 	switch (alg) {
 	case SR_CRYPTOM_AES_ECB_256:
-		if (rijndael_set_key_enc_only(&ctx, key, 256) != 0)
+		if ((ctx = malloc(sizeof(*ctx), M_DEVBUF, M_WAITOK | M_CANFAIL |
+		    M_ZERO)) == NULL)
+			return (-1);
+		if (AES_Setkey(ctx, key, 32, 1) != 0)
 			goto out;
-		for (i = 0; i < size; i += RIJNDAEL128_BLOCK_LEN)
-			rijndael_encrypt(&ctx, &p[i], &c[i]);
+		for (i = 0; i < size; i += AES_BLOCK_LEN)
+			AES_Encrypt(ctx, &p[i], &c[i]);
 		rv = 0;
 		break;
 	default:
@@ -376,22 +381,30 @@ sr_crypto_encrypt(u_char *p, u_char *c, u_char *key, size_t size, int alg)
 	}
 
 out:
-	explicit_bzero(&ctx, sizeof(ctx));
+	if (ctx) {
+		explicit_bzero(ctx, sizeof(*ctx));
+		free(ctx, M_DEVBUF, sizeof(*ctx));
+	}
 	return (rv);
 }
 
 int
 sr_crypto_decrypt(u_char *c, u_char *p, u_char *key, size_t size, int alg)
 {
-	rijndael_ctx		ctx;
+	AES_CTX			*ctx = NULL;
 	int			i, rv = 1;
+
+	assertwaitok();
 
 	switch (alg) {
 	case SR_CRYPTOM_AES_ECB_256:
-		if (rijndael_set_key(&ctx, key, 256) != 0)
+		if ((ctx = malloc(sizeof(*ctx), M_DEVBUF, M_WAITOK | M_CANFAIL |
+		    M_ZERO)) == NULL)
+			return (-1);
+		if (AES_Setkey(ctx, key, 32, 0) != 0)
 			goto out;
-		for (i = 0; i < size; i += RIJNDAEL128_BLOCK_LEN)
-			rijndael_decrypt(&ctx, &c[i], &p[i]);
+		for (i = 0; i < size; i += AES_BLOCK_LEN)
+			AES_Decrypt(ctx, &c[i], &p[i]);
 		rv = 0;
 		break;
 	default:
@@ -402,7 +415,10 @@ sr_crypto_decrypt(u_char *c, u_char *p, u_char *key, size_t size, int alg)
 	}
 
 out:
-	explicit_bzero(&ctx, sizeof(ctx));
+	if (ctx) {
+		explicit_bzero(ctx, sizeof(*ctx));
+		free(ctx, M_DEVBUF, sizeof(*ctx));
+	}
 	return (rv);
 }
 
