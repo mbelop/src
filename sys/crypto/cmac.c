@@ -24,7 +24,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/cmac.h>
 
 #define LSHIFT(v, r) do {					\
@@ -50,7 +50,7 @@ AES_CMAC_Init(AES_CMAC_CTX *ctx)
 void
 AES_CMAC_SetKey(AES_CMAC_CTX *ctx, const u_int8_t key[AES_CMAC_KEY_LENGTH])
 {
-	rijndael_set_key_enc_only(&ctx->rijndael, key, 128);
+	AES_Setkey(&ctx->aesctx, (u_int8_t *)key, 16);
 }
 
 void
@@ -65,13 +65,13 @@ AES_CMAC_Update(AES_CMAC_CTX *ctx, const u_int8_t *data, u_int len)
 		if (ctx->M_n < 16 || len == mlen)
 			return;
 		XOR(ctx->M_last, ctx->X);
-		rijndael_encrypt(&ctx->rijndael, ctx->X, ctx->X);
+		AES_Encrypt_ECB(&ctx->aesctx, ctx->X, ctx->X, 1);
 		data += mlen;
 		len -= mlen;
 	}
 	while (len > 16) {	/* not last block */
 		XOR(data, ctx->X);
-		rijndael_encrypt(&ctx->rijndael, ctx->X, ctx->X);
+		AES_Encrypt_ECB(&ctx->aesctx, ctx->X, ctx->X, 1);
 		data += 16;
 		len -= 16;
 	}
@@ -87,7 +87,7 @@ AES_CMAC_Final(u_int8_t digest[AES_CMAC_DIGEST_LENGTH], AES_CMAC_CTX *ctx)
 
 	/* generate subkey K1 */
 	memset(K, 0, sizeof K);
-	rijndael_encrypt(&ctx->rijndael, K, K);
+	AES_Encrypt_ECB(&ctx->aesctx, K, K, 1);
 
 	if (K[0] & 0x80) {
 		LSHIFT(K, K);
@@ -114,7 +114,7 @@ AES_CMAC_Final(u_int8_t digest[AES_CMAC_DIGEST_LENGTH], AES_CMAC_CTX *ctx)
 		XOR(K, ctx->M_last);
 	}
 	XOR(ctx->M_last, ctx->X);
-	rijndael_encrypt(&ctx->rijndael, ctx->X, digest);
+	AES_Encrypt_ECB(&ctx->aesctx, ctx->X, digest, 1);
 
 	explicit_bzero(K, sizeof K);
 }

@@ -23,7 +23,7 @@
 #define AES_CMAC_DIGEST_LENGTH	16
 
 typedef struct _AES_CMAC_CTX {
-	rijndael_ctx	rijndael;
+	AES_CTX		aesctx;
 	u_int8_t	X[16];
 	u_int8_t	M_last[16];
 	u_int		M_n;

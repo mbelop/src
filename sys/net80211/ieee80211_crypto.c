@@ -42,7 +42,7 @@
 #include <crypto/sha1.h>
 #include <crypto/sha2.h>
 #include <crypto/hmac.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/cmac.h>
 #include <crypto/key_wrap.h>
 
