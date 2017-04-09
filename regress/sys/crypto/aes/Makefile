@@ -19,7 +19,7 @@ CDIAGFLAGS+=	-Wshadow
 REGRESS_ROOT_TARGETS=	run-regress-${PROG}
 
 .PATH:	${DIR}/crypto
-SRCS+=	rijndael.c
+SRCS+=	aes.c
 
 run-regress-${PROG}: ${PROG}
 	./${PROG} ${.CURDIR}/vectors/*.txt

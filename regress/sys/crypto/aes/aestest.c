@@ -31,7 +31,7 @@
  */
 
 #include <sys/param.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,17 +43,17 @@ static int
 docrypt(const unsigned char *key, size_t klen, const unsigned char *in,
     unsigned char *out, size_t len, int do_encrypt)
 {
-	rijndael_ctx ctx;
+	AES_CTX ctx;
 	int error = 0;
 
 	memset(&ctx, 0, sizeof(ctx));
-	error = rijndael_set_key(&ctx, key, klen * 8);
+	error = AES_Setkey(&ctx, key, klen, do_encrypt);
 	if (error)
 		return -1;
 	if (do_encrypt)
-		rijndael_encrypt(&ctx, in, out);
+		AES_Encrypt(&ctx, in, out);
 	else
-		rijndael_decrypt(&ctx, in, out);
+		AES_Decrypt(&ctx, in, out);
 	return 0;
 }
 
