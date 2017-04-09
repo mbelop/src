@@ -46,6 +46,14 @@
 #include <crypto/cmac.h>
 #include <crypto/key_wrap.h>
 
+typedef union _ANY_CTX {
+	HMAC_MD5_CTX		md5;
+	HMAC_SHA1_CTX		sha1;
+	AES_CMAC_CTX		cmac;
+	struct rc4_ctx		rc4;
+	aes_key_wrap_ctx	aes;
+} ANY_CTX;
+
 void	ieee80211_prf(const u_int8_t *, size_t, const u_int8_t *, size_t,
 	    const u_int8_t *, size_t, u_int8_t *, size_t);
 void	ieee80211_kdf(const u_int8_t *, size_t, const u_int8_t *, size_t,
@@ -68,6 +76,13 @@ ieee80211_crypto_attach(struct ifnet *ifp)
 	}
 	ic->ic_set_key = ieee80211_set_key;
 	ic->ic_delete_key = ieee80211_delete_key;
+
+	if ((ic->ic_eapol_ctx[0] = malloc(sizeof(ANY_CTX), M_DEVBUF,
+	    M_NOWAIT | M_ZERO)) == NULL ||
+	    (ic->ic_eapol_ctx[1] = malloc(sizeof(ANY_CTX), M_DEVBUF,
+	    M_NOWAIT | M_ZERO)) == NULL)
+		panic("failed to allocate EAPOL contexts");
+
 #ifndef IEEE80211_STA_ONLY
 	timeout_set(&ic->ic_tkip_micfail_timeout,
 	    ieee80211_michael_mic_failure_timeout, ic);
@@ -431,44 +446,42 @@ ieee80211_derive_pmkid(enum ieee80211_akm akm, const u_int8_t *pmk,
 		ieee80211_pmkid_sha1(pmk, aa, spa, pmkid);
 }
 
-typedef union _ANY_CTX {
-	HMAC_MD5_CTX	md5;
-	HMAC_SHA1_CTX	sha1;
-	AES_CMAC_CTX	cmac;
-} ANY_CTX;
-
 /*
  * Compute the Key MIC field of an EAPOL-Key frame using the specified Key
  * Confirmation Key (KCK).  The hash function can be HMAC-MD5, HMAC-SHA1
  * or AES-128-CMAC depending on the EAPOL-Key Key Descriptor Version.
  */
 void
-ieee80211_eapol_key_mic(struct ieee80211_eapol_key *key, const u_int8_t *kck)
+ieee80211_eapol_key_mic(struct ieee80211_eapol_key *key, void *eapol_ctx,
+    const u_int8_t *kck)
 {
 	u_int8_t digest[SHA1_DIGEST_LENGTH];
-	ANY_CTX ctx;	/* XXX off stack? */
+	ANY_CTX *ctx = eapol_ctx;
 	u_int len;
 
 	len = BE_READ_2(key->len) + 4;
 
 	switch (BE_READ_2(key->info) & EAPOL_KEY_VERSION_MASK) {
 	case EAPOL_KEY_DESC_V1:
-		HMAC_MD5_Init(&ctx.md5, kck, 16);
-		HMAC_MD5_Update(&ctx.md5, (u_int8_t *)key, len);
-		HMAC_MD5_Final(key->mic, &ctx.md5);
+		HMAC_MD5_Init(&ctx->md5, kck, 16);
+		HMAC_MD5_Update(&ctx->md5, (u_int8_t *)key, len);
+		HMAC_MD5_Final(key->mic, &ctx->md5);
+		explicit_bzero(&ctx->md5, sizeof(ctx->md5));
 		break;
 	case EAPOL_KEY_DESC_V2:
-		HMAC_SHA1_Init(&ctx.sha1, kck, 16);
-		HMAC_SHA1_Update(&ctx.sha1, (u_int8_t *)key, len);
-		HMAC_SHA1_Final(digest, &ctx.sha1);
+		HMAC_SHA1_Init(&ctx->sha1, kck, 16);
+		HMAC_SHA1_Update(&ctx->sha1, (u_int8_t *)key, len);
+		HMAC_SHA1_Final(digest, &ctx->sha1);
 		/* truncate HMAC-SHA1 to its 128 MSBs */
 		memcpy(key->mic, digest, EAPOL_KEY_MIC_LEN);
+		explicit_bzero(&ctx->sha1, sizeof(ctx->sha1));
 		break;
 	case EAPOL_KEY_DESC_V3:
-		AES_CMAC_Init(&ctx.cmac);
-		AES_CMAC_SetKey(&ctx.cmac, kck);
-		AES_CMAC_Update(&ctx.cmac, (u_int8_t *)key, len);
-		AES_CMAC_Final(key->mic, &ctx.cmac);
+		AES_CMAC_Init(&ctx->cmac);
+		AES_CMAC_SetKey(&ctx->cmac, kck);
+		AES_CMAC_Update(&ctx->cmac, (u_int8_t *)key, len);
+		AES_CMAC_Final(key->mic, &ctx->cmac);
+		explicit_bzero(&ctx->cmac, sizeof(ctx->cmac));
 		break;
 	}
 }
@@ -478,14 +491,14 @@ ieee80211_eapol_key_mic(struct ieee80211_eapol_key *key, const u_int8_t *kck)
  * Confirmation Key (KCK).
  */
 int
-ieee80211_eapol_key_check_mic(struct ieee80211_eapol_key *key,
+ieee80211_eapol_key_check_mic(struct ieee80211_eapol_key *key, void *eapol_ctx,
     const u_int8_t *kck)
 {
 	u_int8_t mic[EAPOL_KEY_MIC_LEN];
 
 	memcpy(mic, key->mic, EAPOL_KEY_MIC_LEN);
 	memset(key->mic, 0, EAPOL_KEY_MIC_LEN);
-	ieee80211_eapol_key_mic(key, kck);
+	ieee80211_eapol_key_mic(key, eapol_ctx, kck);
 
 	return timingsafe_bcmp(key->mic, mic, EAPOL_KEY_MIC_LEN) != 0;
 }
@@ -498,13 +511,10 @@ ieee80211_eapol_key_check_mic(struct ieee80211_eapol_key *key,
  */
 void
 ieee80211_eapol_key_encrypt(struct ieee80211com *ic,
-    struct ieee80211_eapol_key *key, const u_int8_t *kek)
+    struct ieee80211_eapol_key *key, void *eapol_ctx, const u_int8_t *kek)
 {
-	union {
-		struct rc4_ctx rc4;
-		aes_key_wrap_ctx aes;
-	} ctx;	/* XXX off stack? */
 	u_int8_t keybuf[EAPOL_KEY_IV_LEN + 16];
+	ANY_CTX *ctx = eapol_ctx;
 	u_int16_t len, info;
 	u_int8_t *data;
 	int n;
@@ -524,10 +534,11 @@ ieee80211_eapol_key_encrypt(struct ieee80211com *ic,
 		memcpy(keybuf, key->iv, EAPOL_KEY_IV_LEN);
 		memcpy(keybuf + EAPOL_KEY_IV_LEN, kek, 16);
 
-		rc4_keysetup(&ctx.rc4, keybuf, sizeof keybuf);
+		rc4_keysetup(&ctx->rc4, keybuf, sizeof keybuf);
 		/* discard the first 256 octets of the ARC4 key stream */
-		rc4_skip(&ctx.rc4, RC4STATE);
-		rc4_crypt(&ctx.rc4, data, data, len);
+		rc4_skip(&ctx->rc4, RC4STATE);
+		rc4_crypt(&ctx->rc4, data, data, len);
+		explicit_bzero(&ctx->rc4, sizeof(ctx->rc4));
 		break;
 	case EAPOL_KEY_DESC_V2:
 	case EAPOL_KEY_DESC_V3:
@@ -538,8 +549,9 @@ ieee80211_eapol_key_encrypt(struct ieee80211com *ic,
 			memset(&data[len], 0, n - 1);
 			len += n - 1;
 		}
-		aes_key_wrap_set_key_wrap_only(&ctx.aes, kek, 16);
-		aes_key_wrap(&ctx.aes, data, len / 8, data);
+		aes_key_wrap_set_key_wrap_only(&ctx->aes, kek, 16);
+		aes_key_wrap(&ctx->aes, data, len / 8, data);
+		explicit_bzero(&ctx->aes, sizeof(ctx->aes));
 		len += 8;	/* AES Key Wrap adds 8 bytes */
 		/* update key data length */
 		BE_WRITE_2(key->paylen, len);
@@ -556,16 +568,14 @@ ieee80211_eapol_key_encrypt(struct ieee80211com *ic,
  * AES Key Wrap depending on the EAPOL-Key Key Descriptor Version.
  */
 int
-ieee80211_eapol_key_decrypt(struct ieee80211_eapol_key *key,
+ieee80211_eapol_key_decrypt(struct ieee80211_eapol_key *key, void *eapol_ctx,
     const u_int8_t *kek)
 {
-	union {
-		struct rc4_ctx rc4;
-		aes_key_wrap_ctx aes;
-	} ctx;	/* XXX off stack? */
 	u_int8_t keybuf[EAPOL_KEY_IV_LEN + 16];
+	ANY_CTX *ctx = eapol_ctx;
 	u_int16_t len, info;
 	u_int8_t *data;
+	int ret;
 
 	len  = BE_READ_2(key->paylen);
 	info = BE_READ_2(key->info);
@@ -577,10 +587,11 @@ ieee80211_eapol_key_decrypt(struct ieee80211_eapol_key *key,
 		memcpy(keybuf, key->iv, EAPOL_KEY_IV_LEN);
 		memcpy(keybuf + EAPOL_KEY_IV_LEN, kek, 16);
 
-		rc4_keysetup(&ctx.rc4, keybuf, sizeof keybuf);
+		rc4_keysetup(&ctx->rc4, keybuf, sizeof keybuf);
 		/* discard the first 256 octets of the ARC4 key stream */
-		rc4_skip(&ctx.rc4, RC4STATE);
-		rc4_crypt(&ctx.rc4, data, data, len);
+		rc4_skip(&ctx->rc4, RC4STATE);
+		rc4_crypt(&ctx->rc4, data, data, len);
+		explicit_bzero(&ctx->rc4, sizeof(ctx->rc4));
 		return 0;
 	case EAPOL_KEY_DESC_V2:
 	case EAPOL_KEY_DESC_V3:
@@ -588,8 +599,10 @@ ieee80211_eapol_key_decrypt(struct ieee80211_eapol_key *key,
 		if (len < 16 + 8 || (len & 7) != 0)
 			return 1;
 		len -= 8;	/* AES Key Wrap adds 8 bytes */
-		aes_key_wrap_set_key(&ctx.aes, kek, 16);
-		return aes_key_unwrap(&ctx.aes, data, data, len / 8);
+		aes_key_wrap_set_key(&ctx->aes, kek, 16);
+		ret = aes_key_unwrap(&ctx->aes, data, data, len / 8);
+		explicit_bzero(&ctx->aes, sizeof(ctx->aes));
+		return ret;
 	}
 
 	return 1;	/* unknown Key Descriptor Version */
