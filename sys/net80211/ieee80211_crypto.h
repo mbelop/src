@@ -125,15 +125,15 @@ int	ieee80211_set_key(struct ieee80211com *, struct ieee80211_node *,
 void	ieee80211_delete_key(struct ieee80211com *, struct ieee80211_node *,
 	    struct ieee80211_key *);
 
-void	ieee80211_eapol_key_mic(struct ieee80211_eapol_key *,
+void	ieee80211_eapol_key_mic(struct ieee80211_eapol_key *, void *,
 	    const u_int8_t *);
-int	ieee80211_eapol_key_check_mic(struct ieee80211_eapol_key *,
+int	ieee80211_eapol_key_check_mic(struct ieee80211_eapol_key *, void *,
 	    const u_int8_t *);
 #ifndef IEEE80211_STA_ONLY
 void	ieee80211_eapol_key_encrypt(struct ieee80211com *,
-	    struct ieee80211_eapol_key *, const u_int8_t *);
+	    struct ieee80211_eapol_key *, void *, const u_int8_t *);
 #endif
-int	ieee80211_eapol_key_decrypt(struct ieee80211_eapol_key *,
+int	ieee80211_eapol_key_decrypt(struct ieee80211_eapol_key *, void *,
 	    const u_int8_t *);
 
 struct	ieee80211_pmk *ieee80211_pmksa_add(struct ieee80211com *,

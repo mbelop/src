@@ -287,6 +287,7 @@ struct ieee80211com {
 	u_int8_t		ic_globalcnt[EAPOL_KEY_NONCE_LEN];
 	u_int8_t		ic_nonce[EAPOL_KEY_NONCE_LEN];
 	u_int8_t		ic_psk[IEEE80211_PMK_LEN];
+	void			*ic_eapol_ctx[2]; /* 0 is input, 1 is output */
 	struct timeout		ic_rsn_timeout;
 	int			ic_tkip_micfail;
 	u_int64_t		ic_tkip_micfail_last_tsc;

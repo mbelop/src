@@ -298,7 +298,8 @@ ieee80211_recv_4way_msg2(struct ieee80211com *ic,
 	    ni->ni_macaddr, ni->ni_nonce, key->nonce, &tptk);
 
 	/* check Key MIC field using KCK */
-	if (ieee80211_eapol_key_check_mic(key, tptk.kck) != 0) {
+	if (ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    tptk.kck) != 0) {
 		DPRINTF(("key MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;	/* will timeout.. */
@@ -382,7 +383,8 @@ ieee80211_recv_4way_msg3(struct ieee80211com *ic,
 	info = BE_READ_2(key->info);
 
 	/* check Key MIC field using KCK */
-	if (ieee80211_eapol_key_check_mic(key, tptk.kck) != 0) {
+	if (ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    tptk.kck) != 0) {
 		DPRINTF(("key MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;
@@ -392,7 +394,8 @@ ieee80211_recv_4way_msg3(struct ieee80211com *ic,
 
 	/* if encrypted, decrypt Key Data field using KEK */
 	if ((info & EAPOL_KEY_ENCRYPTED) &&
-	    ieee80211_eapol_key_decrypt(key, ni->ni_ptk.kek) != 0) {
+	    ieee80211_eapol_key_decrypt(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kek) != 0) {
 		DPRINTF(("decryption failed\n"));
 		return;
 	}
@@ -640,7 +643,8 @@ ieee80211_recv_4way_msg4(struct ieee80211com *ic,
 	/* NB: replay counter has already been verified by caller */
 
 	/* check Key MIC field using KCK */
-	if (ieee80211_eapol_key_check_mic(key, ni->ni_ptk.kck) != 0) {
+	if (ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kck) != 0) {
 		DPRINTF(("key MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;	/* will timeout.. */
@@ -764,7 +768,8 @@ ieee80211_recv_rsn_group_msg1(struct ieee80211com *ic,
 		return;
 	}
 	/* check Key MIC field using KCK */
-	if (ieee80211_eapol_key_check_mic(key, ni->ni_ptk.kck) != 0) {
+	if (ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kck) != 0) {
 		DPRINTF(("key MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;
@@ -773,7 +778,8 @@ ieee80211_recv_rsn_group_msg1(struct ieee80211com *ic,
 
 	/* check that encrypted and decrypt Key Data field using KEK */
 	if (!(info & EAPOL_KEY_ENCRYPTED) ||
-	    ieee80211_eapol_key_decrypt(key, ni->ni_ptk.kek) != 0) {
+	    ieee80211_eapol_key_decrypt(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kek) != 0) {
 		DPRINTF(("decryption failed\n"));
 		return;
 	}
@@ -916,7 +922,8 @@ ieee80211_recv_wpa_group_msg1(struct ieee80211com *ic,
 		return;
 	}
 	/* check Key MIC field using KCK */
-	if (ieee80211_eapol_key_check_mic(key, ni->ni_ptk.kck) != 0) {
+	if (ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kck) != 0) {
 		DPRINTF(("key MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;
@@ -925,7 +932,8 @@ ieee80211_recv_wpa_group_msg1(struct ieee80211com *ic,
 	 * EAPOL-Key data field is encrypted even though WPA doesn't set
 	 * the ENCRYPTED bit in the info field.
 	 */
-	if (ieee80211_eapol_key_decrypt(key, ni->ni_ptk.kek) != 0) {
+	if (ieee80211_eapol_key_decrypt(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kek) != 0) {
 		DPRINTF(("decryption failed\n"));
 		return;
 	}
@@ -1009,7 +1017,8 @@ ieee80211_recv_group_msg2(struct ieee80211com *ic,
 		return;
 	}
 	/* check Key MIC field using KCK */
-	if (ieee80211_eapol_key_check_mic(key, ni->ni_ptk.kck) != 0) {
+	if (ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kck) != 0) {
 		DPRINTF(("key MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;
@@ -1066,7 +1075,8 @@ ieee80211_recv_eapol_key_req(struct ieee80211com *ic,
 	info = BE_READ_2(key->info);
 
 	if (!(info & EAPOL_KEY_KEYMIC) ||
-	    ieee80211_eapol_key_check_mic(key, ni->ni_ptk.kck) != 0) {
+	    ieee80211_eapol_key_check_mic(key, ic->ic_eapol_ctx[0],
+	    ni->ni_ptk.kck) != 0) {
 		DPRINTF(("key request MIC failed\n"));
 		ic->ic_stats.is_rx_eapol_badmic++;
 		return;
