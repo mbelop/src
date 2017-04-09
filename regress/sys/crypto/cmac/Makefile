@@ -3,7 +3,7 @@
 DIR=${.CURDIR}/../../../../sys
 
 PROG=	cmac_test
-SRCS+=	rijndael.c cmac.c cmac_test.c
+SRCS+=	aes.c cmac.c cmac_test.c
 CDIAGFLAGS=	-Wall
 CDIAGFLAGS+=	-Werror
 CDIAGFLAGS+=	-Wpointer-arith
