@@ -20,7 +20,7 @@
 #define _KEY_WRAP_H_
 
 typedef struct _aes_key_wrap_ctx {
-	rijndael_ctx	ctx;
+	AES_CTX		ctx;
 } aes_key_wrap_ctx;
 
 __BEGIN_DECLS

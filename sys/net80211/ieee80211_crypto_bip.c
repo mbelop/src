@@ -40,7 +40,7 @@
 #include <net80211/ieee80211_crypto.h>
 #include <net80211/ieee80211_priv.h>
 
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/cmac.h>
 
 /* BIP software crypto context */
