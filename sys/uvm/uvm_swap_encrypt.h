@@ -59,7 +59,7 @@ void swap_encrypt(struct swap_key *,caddr_t, caddr_t, u_int64_t, size_t);
 void swap_decrypt(struct swap_key *,caddr_t, caddr_t, u_int64_t, size_t);
 
 void swap_key_cleanup(struct swap_key *);
-void swap_key_prepare(struct swap_key *, int);
+void swap_key_prepare(struct swap_key *);
 
 #define SWAP_KEY_GET(s,x)	do {					\
 					if ((x)->refcount == 0) {	\
