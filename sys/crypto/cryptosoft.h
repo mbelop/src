@@ -29,6 +29,7 @@ struct swcr_data {
 	int		sw_alg;		/* Algorithm */
 	union {
 		struct {
+			u_int8_t	 *SW_ctx;
 			u_int8_t	 *SW_ictx;
 			u_int8_t	 *SW_octx;
 			u_int32_t	 SW_klen;
@@ -44,6 +45,7 @@ struct swcr_data {
 		} SWCR_COMP;
 	} SWCR_UN;
 
+#define sw_ctx		SWCR_UN.SWCR_AUTH.SW_ctx
 #define sw_ictx		SWCR_UN.SWCR_AUTH.SW_ictx
 #define sw_octx		SWCR_UN.SWCR_AUTH.SW_octx
 #define sw_klen		SWCR_UN.SWCR_AUTH.SW_klen
