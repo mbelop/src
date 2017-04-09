@@ -116,7 +116,7 @@ esp_init(struct tdb *tdbp, struct xformsw *xsp, struct ipsecinit *ii)
 			break;
 
 		case SADB_X_EALG_AES:
-			txform = &enc_xform_rijndael128;
+			txform = &enc_xform_aes;
 			break;
 
 		case SADB_X_EALG_AESCTR:
