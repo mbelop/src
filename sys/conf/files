@@ -848,6 +848,7 @@ file netinet/ip_esp.c			ipsec
 file netinet/ip_ah.c			ipsec
 file netinet/ip_carp.c			carp			needs-count
 file netinet/ip_ipcomp.c		ipsec
+file crypto/aes.c			ipsec | crypto | uvm_swap_encrypt | wlan
 file crypto/rijndael.c			ipsec | crypto | uvm_swap_encrypt | wlan
 file crypto/md5.c
 file crypto/rmd160.c			ipsec | crypto
