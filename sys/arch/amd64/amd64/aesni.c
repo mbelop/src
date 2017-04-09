@@ -28,7 +28,7 @@
 #include <sys/mbuf.h>
 
 #include <crypto/cryptodev.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/gmac.h>
 #include <crypto/xform.h>
 #include <crypto/cryptosoft.h>
