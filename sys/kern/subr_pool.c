@@ -136,7 +136,7 @@ void	 pool_cache_destroy(struct pool *);
 void	 pool_cache_info(struct pool *, struct kinfo_pool *);
 
 #ifdef POOL_DEBUG
-int	pool_debug = 1;
+int	pool_debug = 0;
 #else
 int	pool_debug = 0;
 #endif
