@@ -3,7 +3,7 @@
 DIR=${.CURDIR}/../../../../sys
 
 PROG=	key_wrap_test
-SRCS+=	rijndael.c key_wrap.c key_wrap_test.c timingsafe_bcmp.c
+SRCS+=	aes.c key_wrap.c key_wrap_test.c timingsafe_bcmp.c
 CDIAGFLAGS=	-Wall
 CDIAGFLAGS+=	-Werror
 CDIAGFLAGS+=	-Wpointer-arith
