@@ -36,7 +36,7 @@
 
 #ifdef CRYPTO
 #include <crypto/cryptodev.h>
-#include <crypto/rijndael.h>
+#include <crypto/aes.h>
 #include <crypto/xform.h>
 #include <crypto/cryptosoft.h>
 #endif
@@ -194,9 +194,9 @@ viac3_crypto_newsession(u_int32_t *sidp, struct cryptoini *cri)
 			ses->ses_cw0 = cw0;
 
 			/* Build expanded keys for both directions */
-			rijndaelKeySetupEnc(ses->ses_ekey, c->cri_key,
+			AES_KeySetup_Encrypt(ses->ses_ekey, c->cri_key,
 			    c->cri_klen);
-			rijndaelKeySetupDec(ses->ses_dkey, c->cri_key,
+			AES_KeySetup_Decrypt(ses->ses_dkey, c->cri_key,
 			    c->cri_klen);
 			for (i = 0; i < 4 * (AES_MAXROUNDS + 1); i++) {
 				ses->ses_ekey[i] = ntohl(ses->ses_ekey[i]);
