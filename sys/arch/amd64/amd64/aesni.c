@@ -286,6 +286,13 @@ aesni_newsession(u_int32_t *sidp, struct cryptoini *cri)
 			}
 			ses->ses_swd = swd;
 
+			swd->sw_ctx = malloc(axf->ctxsize, M_CRYPTO_DATA,
+			    M_NOWAIT);
+			if (swd->sw_ctx == NULL) {
+				aesni_freesession(ses->ses_sid);
+				return (ENOMEM);
+			}
+
 			swd->sw_ictx = malloc(axf->ctxsize, M_CRYPTO_DATA,
 			    M_NOWAIT);
 			if (swd->sw_ictx == NULL) {
@@ -375,6 +382,10 @@ aesni_freesession(u_int64_t tid)
 		swd = ses->ses_swd;
 		axf = swd->sw_axf;
 
+		if (swd->sw_ctx) {
+			explicit_bzero(swd->sw_ctx, axf->ctxsize);
+			free(swd->sw_ctx, M_CRYPTO_DATA, axf->ctxsize);
+		}
 		if (swd->sw_ictx) {
 			explicit_bzero(swd->sw_ictx, axf->ctxsize);
 			free(swd->sw_ictx, M_CRYPTO_DATA, axf->ctxsize);

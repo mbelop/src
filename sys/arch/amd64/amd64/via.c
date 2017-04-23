@@ -231,6 +231,14 @@ viac3_crypto_newsession(u_int32_t *sidp, struct cryptoini *cri)
 			}
 			ses->swd = swd;
 
+
+			swd->sw_ctx = malloc(axf->ctxsize, M_CRYPTO_DATA,
+			    M_NOWAIT);
+			if (swd->sw_ctx == NULL) {
+				viac3_crypto_freesession(sesn);
+				return (ENOMEM);
+			}
+
 			swd->sw_ictx = malloc(axf->ctxsize, M_CRYPTO_DATA,
 			    M_NOWAIT);
 			if (swd->sw_ictx == NULL) {
@@ -298,6 +306,10 @@ viac3_crypto_freesession(u_int64_t tid)
 		swd = sc->sc_sessions[sesn].swd;
 		axf = swd->sw_axf;
 
+		if (swd->sw_ctx) {
+			explicit_bzero(swd->sw_ctx, axf->ctxsize);
+			free(swd->sw_ctx, M_CRYPTO_DATA, 0);
+		}
 		if (swd->sw_ictx) {
 			explicit_bzero(swd->sw_ictx, axf->ctxsize);
 			free(swd->sw_ictx, M_CRYPTO_DATA, 0);
