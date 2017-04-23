@@ -458,6 +458,13 @@ glxsb_crypto_newsession(uint32_t *sidp, struct cryptoini *cri)
 			}
 			ses->ses_swd_auth = swd;
 
+			swd->sw_ctx = malloc(axf->ctxsize, M_CRYPTO_DATA,
+			    M_NOWAIT);
+			if (swd->sw_ctx == NULL) {
+				glxsb_crypto_freesession(sesn);
+				return (ENOMEM);
+			}
+
 			swd->sw_ictx = malloc(axf->ctxsize, M_CRYPTO_DATA,
 			    M_NOWAIT);
 			if (swd->sw_ictx == NULL) {
@@ -533,13 +540,17 @@ glxsb_crypto_freesession(uint64_t tid)
 	if ((swd = sc->sc_sessions[sesn].ses_swd_auth)) {
 		axf = swd->sw_axf;
 
+		if (swd->sw_ctx) {
+			explicit_bzero(swd->sw_ctx, axf->ctxsize);
+			free(swd->sw_ctx, M_CRYPTO_DATA, axf->ctxsize);
+		}
 		if (swd->sw_ictx) {
 			explicit_bzero(swd->sw_ictx, axf->ctxsize);
-			free(swd->sw_ictx, M_CRYPTO_DATA, 0);
+			free(swd->sw_ictx, M_CRYPTO_DATA, axf->ctxsize);
 		}
 		if (swd->sw_octx) {
 			explicit_bzero(swd->sw_octx, axf->ctxsize);
-			free(swd->sw_octx, M_CRYPTO_DATA, 0);
+			free(swd->sw_octx, M_CRYPTO_DATA, axf->ctxsize);
 		}
 		free(swd, M_CRYPTO_DATA, sizeof *swd);
 	}
