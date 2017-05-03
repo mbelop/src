@@ -391,6 +391,7 @@ ifq_mfreem(struct ifqueue *ifq, struct mbuf *m)
 {
 	MUTEX_ASSERT_LOCKED(&ifq->ifq_mtx);
 
+	KASSERT(ifq_len(ifq) > 0);
 	ifq->ifq_len--;
 	ifq->ifq_qdrops++;
 	ml_enqueue(&ifq->ifq_free, m);
@@ -401,6 +402,7 @@ ifq_mfreeml(struct ifqueue *ifq, struct mbuf_list *ml)
 {
 	MUTEX_ASSERT_LOCKED(&ifq->ifq_mtx);
 
+	KASSERT(ifq_len(ifq) >= ml_len(ml));
 	ifq->ifq_len -= ml_len(ml);
 	ifq->ifq_qdrops += ml_len(ml);
 	ml_enlist(&ifq->ifq_free, ml);
