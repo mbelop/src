@@ -1588,9 +1588,18 @@ The default value for
 is selected based on the configured Maximum Transmission Unit (MTU)
 of the specified interface.
 .Pp
-An additional configuration option
-.Cm qlimit
-sets the queue depth shared among all flows.
+Several additional configuration options are provided to fine-tune the
+underlying queue management algorithm.
+.Bl -tag -width xxxx
+.It Cm interval Ar value
+The duration (in ms) of an initial observation interval.
+The default is 100ms.
+.It Cm target Ar value
+The delay threshold (in ms) above which the packet is assumed to have
+spent too long in the queue.
+The default is 5ms.
+.It Cm qlimit Ar limit
+The maximum number of packets held in the queue.
 The default is 1024.
 .Sh TABLES
 Tables are named structures which can hold a collection of addresses and
