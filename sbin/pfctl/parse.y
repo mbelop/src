@@ -320,6 +320,8 @@ struct queue_opts {
 #define	QOM_QLIMIT	0x08
 #define	QOM_FLOWS	0x10
 #define	QOM_QUANTUM	0x20
+#define	QOM_INTERVAL	0x40
+#define	QOM_TARGET	0x80
 	struct node_sc	 realtime;
 	struct node_sc	 linkshare;
 	struct node_sc	 upperlimit;
@@ -468,7 +470,7 @@ int	parseport(char *, struct range *r, int);
 %token	SYNPROXY FINGERPRINTS NOSYNC DEBUG SKIP HOSTID
 %token	ANTISPOOF FOR INCLUDE MATCHES
 %token	BITMASK RANDOM SOURCEHASH ROUNDROBIN LEASTSTATES STATICPORT PROBABILITY
-%token	WEIGHT BANDWIDTH FLOWS QUANTUM
+%token	WEIGHT BANDWIDTH FLOWS QUANTUM INTERVAL TARGET
 %token	QUEUE PRIORITY QLIMIT RTABLE RDOMAIN MINIMUM BURST PARENT
 %token	LOAD RULESET_OPTIMIZATION RTABLE RDOMAIN PRIO ONCE DEFAULT
 %token	STICKYADDRESS MAXSRCSTATES MAXSRCNODES SOURCETRACK GLOBAL RULE
@@ -1396,6 +1398,48 @@ queue_opt	: BANDWIDTH scspec optscs			{
 			}
 			queue_opts.marker |= QOM_QUANTUM;
 			queue_opts.flowqueue.quantum = $2;
+		}
+		| INTERVAL STRING				{
+			u_long	 ul;
+			char	*cp;
+
+			if (queue_opts.marker & QOM_INTERVAL) {
+				yyerror("interval cannot be respecified");
+				YYERROR;
+			}
+
+			ul = strtoul($2, &cp, 10);
+			if (cp == NULL || strcmp(cp, "ms")) {
+				yyerror("interval must be in ms");
+				YYERROR;
+			}
+			if (ul < 100 || ul > 4000) {
+				yyerror("interval out of range: max 4000");
+				YYERROR;
+			}
+			queue_opts.marker |= QOM_INTERVAL;
+			queue_opts.flowqueue.interval = ul * 1000000;
+		}
+		| TARGET STRING					{
+			u_long	 ul;
+			char	*cp;
+
+			if (queue_opts.marker & QOM_TARGET) {
+				yyerror("target cannot be respecified");
+				YYERROR;
+			}
+
+			ul = strtoul($2, &cp, 10);
+			if (cp == NULL || strcmp(cp, "ms")) {
+				yyerror("target must be in ms");
+				YYERROR;
+			}
+			if (ul < 5 || ul > 400) {
+				yyerror("target out of range: max 400");
+				YYERROR;
+			}
+			queue_opts.marker |= QOM_TARGET;
+			queue_opts.flowqueue.target = ul * 1000000;
 		}
 		;
 
@@ -5054,6 +5098,7 @@ lookup(char *s)
 		{ "include",		INCLUDE},
 		{ "inet",		INET},
 		{ "inet6",		INET6},
+		{ "interval",		INTERVAL},
 		{ "keep",		KEEP},
 		{ "label",		LABEL},
 		{ "least-states",	LEASTSTATES},
@@ -5126,6 +5171,7 @@ lookup(char *s)
 		{ "table",		TABLE},
 		{ "tag",		TAG},
 		{ "tagged",		TAGGED},
+		{ "target",		TARGET},
 		{ "timeout",		TIMEOUT},
 		{ "to",			TO},
 		{ "tos",		TOS},
