@@ -51,6 +51,7 @@
 #include <netinet/tcp_fsm.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
+#include <netinet/tcp_cc.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/tcp_seq.h>
 
@@ -222,6 +223,37 @@ tcp_timer_rexmt(void *arg)
 		    tp->t_softerror : ETIMEDOUT);
 		goto out;
 	}
+	if (tp->t_state == TCPS_SYN_SENT) {
+		/*
+		 * If the SYN was retransmitted, indicate CWND to be
+		 * limited to 1 segment in cc_conn_init().
+		 */
+		tp->snd_cwnd = 1;
+	} else if (tp->t_rxtshift == 1) {
+		/*
+		 * first retransmit; record ssthresh and cwnd so they can
+		 * be recovered if this turns out to be a "bad" retransmit.
+		 * A retransmit is considered "bad" if an ACK for this
+		 * segment is received within RTT/2 interval; the assumption
+		 * here is that the ACK was already in flight.  See
+		 * "On Estimating End-to-End Network Path Properties" by
+		 * Allman and Paxson for more details.
+		 */
+		tp->snd_cwnd_prev = tp->snd_cwnd;
+		tp->snd_ssthresh_prev = tp->snd_ssthresh;
+		tp->snd_last_prev = tp->snd_last;
+		if (IN_FASTRECOVERY(tp))
+			tp->t_flags |= TF_WASFRECOVERY;
+		else
+			tp->t_flags &= ~TF_WASFRECOVERY;
+		if (IN_CONGRECOVERY(tp))
+			tp->t_flags |= TF_WASCRECOVERY;
+		else
+			tp->t_flags &= ~TF_WASCRECOVERY;
+		tp->t_badrxtwin = tcp_now + (tp->t_srtt >> (TCP_RTT_SHIFT + 1));
+		tp->t_flags |= TF_PREVVALID;
+	} else
+		tp->t_flags &= ~TF_PREVVALID;
 	tcpstat_inc(tcps_rexmttimeo);
 	rto = TCP_REXMTVAL(tp);
 	if (rto < tp->t_rttmin)
@@ -316,45 +348,7 @@ tcp_timer_rexmt(void *arg)
 	    && tcp_do_ecn && !(tp->t_flags & TF_DISABLE_ECN))
 		tp->t_flags |= TF_DISABLE_ECN;
 #endif
-	/*
-	 * Close the congestion window down to one segment
-	 * (we'll open it by one segment for each ack we get).
-	 * Since we probably have a window's worth of unacked
-	 * data accumulated, this "slow start" keeps us from
-	 * dumping all that data as back-to-back packets (which
-	 * might overwhelm an intermediate gateway).
-	 *
-	 * There are two phases to the opening: Initially we
-	 * open by one mss on each ack.  This makes the window
-	 * size increase exponentially with time.  If the
-	 * window is larger than the path can handle, this
-	 * exponential growth results in dropped packet(s)
-	 * almost immediately.  To get more time between
-	 * drops but still "push" the network to take advantage
-	 * of improving conditions, we switch from exponential
-	 * to linear window opening at some threshold size.
-	 * For a threshold, we use half the current window
-	 * size, truncated to a multiple of the mss.
-	 *
-	 * (the minimum cwnd that will give us exponential
-	 * growth is 2 mss.  We don't allow the threshold
-	 * to go below this.)
-	 */
-	{
-		u_long win = ulmin(tp->snd_wnd, tp->snd_cwnd) / 2 / tp->t_maxseg;
-		if (win < 2)
-			win = 2;
-		tp->snd_cwnd = tp->t_maxseg;
-		tp->snd_ssthresh = win * tp->t_maxseg;
-		tp->t_dupacks = 0;
-#ifdef TCP_ECN
-		tp->snd_last = tp->snd_max;
-		tp->t_flags |= TF_SEND_CWR;
-#endif
-#if 1 /* TCP_ECN */
-		tcpstat_inc(tcps_cwr_timeout);
-#endif
-	}
+	cc_cong_signal(tp, 0, CC_RTO);
 	(void) tcp_output(tp);
 
  out:

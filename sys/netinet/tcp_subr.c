@@ -90,6 +90,7 @@
 #include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
+#include <netinet/tcp_cc.h>
 
 #ifdef INET6
 #include <netinet6/ip6protosw.h>
@@ -110,6 +111,8 @@ int	tcp_ack_on_push = 0;	/* set to enable immediate ACK-on-PUSH */
 int	tcp_do_ecn = 0;		/* RFC3168 ECN enabled/disabled? */
 #endif
 int	tcp_do_rfc3390 = 2;	/* Increase TCP's Initial Window to 10*mss */
+int	tcp_do_rfc3465 = 1;	/* RFC 3465 (Appropriate Byte Counting) */
+int	tcp_abc_limit = 2;	/* max cwnd increment cap */
 
 u_int32_t	tcp_now = 1;
 
@@ -161,6 +164,9 @@ tcp_init(void)
 
 	/* Initialize the compressed state engine. */
 	syn_cache_init();
+
+	/* Initialize TCP congestion control algorithms. */
+	cc_init();
 
 	/* Initialize timer state. */
 	tcp_timer_init();
@@ -431,6 +437,11 @@ tcp_newtcpcb(struct inpcb *inp)
 		TCP_TIMER_INIT(tp, i);
 	timeout_set(&tp->t_reap_to, tcp_reaper, tp);
 
+	tp->t_ccalg = tcp_default_cc;
+	tp->t_ccvar.tp = tp;
+	if (tp->t_ccalg->cb_init)
+		tp->t_ccalg->cb_init(&tp->t_ccvar);
+
 	tp->sack_enable = tcp_do_sack;
 	tp->t_flags = tcp_do_rfc1323 ? (TF_REQ_SCALE|TF_REQ_TSTMP) : 0;
 	tp->t_inpcb = inp;
@@ -447,10 +458,10 @@ tcp_newtcpcb(struct inpcb *inp)
 	    TCPTV_MIN, TCPTV_REXMTMAX);
 	tp->snd_cwnd = TCP_MAXWIN << TCP_MAX_WINSHIFT;
 	tp->snd_ssthresh = TCP_MAXWIN << TCP_MAX_WINSHIFT;
-	
+
 	tp->t_pmtud_mtu_sent = 0;
 	tp->t_pmtud_mss_acked = 0;
-	
+
 #ifdef INET6
 	/* we disallow IPv4 mapped address completely. */
 	if ((inp->inp_flags & INP_IPV6) == 0)
@@ -523,6 +534,10 @@ tcp_close(struct tcpcb *tp)
 	}
 
 	m_free(tp->t_template);
+
+	if (tp->t_ccalg->cb_destroy)
+		tp->t_ccalg->cb_destroy(&tp->t_ccvar);
+	tp->t_ccalg = NULL;
 
 	tp->t_flags |= TF_DEAD;
 	timeout_add(&tp->t_reap_to, 0);

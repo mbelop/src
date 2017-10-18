@@ -553,6 +553,8 @@ struct	tcpstat {
 	{ "synuselimit", 	CTLTYPE_INT }, \
 	{ "rootonly", CTLTYPE_STRUCT }, \
 	{ "synhashsize", 	CTLTYPE_INT }, \
+	{ "rfc3465", 	CTLTYPE_INT }, \
+	{ "abclimit", 	CTLTYPE_INT }, \
 }
 
 #define	TCPCTL_VARS { \
@@ -581,7 +583,9 @@ struct	tcpstat {
 	NULL, \
 	NULL, \
 	NULL, \
-	NULL \
+	NULL, \
+	&tcp_do_rfc3465, \
+	&tcp_abc_limit \
 }
 
 struct tcp_ident_mapping {
@@ -728,6 +732,8 @@ extern	struct pool sackhl_pool;
 extern	int tcp_sackhole_limit;	/* max entries for tcp sack queues */
 extern	int tcp_do_ecn;		/* RFC3168 ECN enabled/disabled? */
 extern	int tcp_do_rfc3390;	/* RFC3390 Increasing TCP's Initial Window */
+extern	int tcp_do_rfc3465;	/* RFC 3465 Appropriate Byte Counting */
+extern	int tcp_abc_limit;	/* max cwnd increment cap */
 
 extern	struct pool tcpqe_pool;
 extern	int tcp_reass_limit;	/* max entries for tcp reass queues */
