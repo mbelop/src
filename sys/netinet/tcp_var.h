@@ -37,6 +37,8 @@
 
 #include <sys/timeout.h>
 
+struct tcpcb;
+
 /*
  * Kernel variables for tcp.
  */
@@ -52,6 +54,14 @@ struct sackhole {
 	int	dups;		/* number of dup(s)acks for this hole */
 	tcp_seq rxmit;		/* next seq. no in hole to be retransmitted */
 	struct sackhole *next;	/* next in list */
+};
+
+struct tcp_ccvar {
+	void	*cc_data;	/* Per-connection private CC algorithm data */
+	int	bytes_this_ack; /* # bytes acked by the current ACK */
+	tcp_seq	curack;		/* Most recent ACK */
+	u_int	flags;		/* Flags for tcp_ccvar (see below) */
+	struct	tcpcb *tp;	/* TCP control block */
 };
 
 /*
@@ -100,6 +110,11 @@ struct tcpcb {
 #define TF_NEEDOUTPUT	0x00800000	/* call tcp_output after tcp_input */
 #define TF_BLOCKOUTPUT	0x01000000	/* avert tcp_output during tcp_input */
 #define TF_NOPUSH	0x02000000	/* don't push */
+#define TF_PREVVALID	0x04000000	/* saved values for bad rxmit valid */
+#define	TF_FASTRECOVERY	0x10000000	/* in NewReno Fast Recovery */
+#define	TF_WASFRECOVERY	0x20000000	/* was in NewReno Fast Recovery */
+#define	TF_CONGRECOVERY	0x40000000	/* congestion recovery mode */
+#define	TF_WASCRECOVERY	0x80000000	/* was in congestion recovery */
 
 	struct	mbuf *t_template;	/* skeletal packet for transmit */
 	struct	inpcb *t_inpcb;		/* back pointer to internet pcb */
@@ -120,6 +135,7 @@ struct tcpcb {
 	int	snd_numholes;		/* number of holes seen by sender */
 	struct sackhole *snd_holes;	/* linked list of holes (sorted) */
 	tcp_seq snd_last;		/* for use in fast recovery */
+	tcp_seq snd_last_prev;		/* snd_last prior to retransmit */
 /* receive sequence variables */
 	u_long	rcv_wnd;		/* receive window */
 	tcp_seq	rcv_nxt;		/* receive next */
@@ -140,10 +156,16 @@ struct tcpcb {
 					 */
 /* congestion control (for slow start, source quench, retransmit after loss) */
 	u_long	snd_cwnd;		/* congestion-controlled window */
+	u_long	snd_cwnd_prev;		/* cwnd prior to retransmit */
 	u_long	snd_ssthresh;		/* snd_cwnd size threshold for
 					 * for slow start exponential to
 					 * linear switch
 					 */
+	u_long	snd_ssthresh_prev;	/* ssthresh prior to retransmit */
+	u_int	t_badrxtwin;		/* window for retransmit recovery */
+	int	t_bytes_acked;		/* # bytes acked during current RTT */
+	struct	tcp_cc *t_ccalg;	/* congestion control algorithm */
+	struct	tcp_ccvar t_ccvar;	/* algorithm specific vars */
 
 /* auto-sizing variables */
 	u_int	rfbuf_cnt;	/* recv buffer autoscaling byte count */
@@ -162,6 +184,7 @@ struct tcpcb {
 	short	t_srtt;			/* smoothed round-trip time */
 	short	t_rttvar;		/* variance in round-trip time */
 	u_short	t_rttmin;		/* minimum rtt allowed */
+	u_long	t_rttupdated;		/* number of times rtt sampled */
 	u_long	max_sndwnd;		/* largest window peer has offered */
 
 /* out-of-band data */
@@ -199,6 +222,18 @@ struct tcpcb {
 
 #define	intotcpcb(ip)	((struct tcpcb *)(ip)->inp_ppcb)
 #define	sototcpcb(so)	(intotcpcb(sotoinpcb(so)))
+
+#define	IN_FASTRECOVERY(tp)		((tp)->t_flags & TF_FASTRECOVERY)
+#define	ENTER_FASTRECOVERY(tp)		(tp)->t_flags |= TF_FASTRECOVERY
+#define	EXIT_FASTRECOVERY(tp)		(tp)->t_flags &= ~TF_FASTRECOVERY
+
+#define	IN_CONGRECOVERY(tp)		((tp)->t_flags & TF_CONGRECOVERY)
+#define	ENTER_CONGRECOVERY(tp)		(tp)->t_flags |= TF_CONGRECOVERY
+#define	EXIT_CONGRECOVERY(tp)		(tp)->t_flags &= ~TF_CONGRECOVERY
+
+#define	IN_RECOVERY(tp) 	((tp)->t_flags & (TF_CONGRECOVERY | TF_FASTRECOVERY))
+#define	ENTER_RECOVERY(tp)	(tp)->t_flags |= (TF_CONGRECOVERY | TF_FASTRECOVERY)
+#define	EXIT_RECOVERY(tp)	(tp)->t_flags &= ~(TF_CONGRECOVERY | TF_FASTRECOVERY)
 
 #ifdef _KERNEL
 extern int tcp_delack_ticks;
@@ -487,7 +522,9 @@ struct	tcpstat {
 #define	TCPCTL_SYN_USE_LIMIT   23 /* number of uses before reseeding hash */
 #define TCPCTL_ROOTONLY	       24 /* return root only port bitmap */
 #define	TCPCTL_SYN_HASH_SIZE   25 /* number of buckets in the hash */
-#define	TCPCTL_MAXID	       26
+#define	TCPCTL_RFC3465         26 /* enable/disable RFC3465 ABC */
+#define	TCPCTL_ABC_LIMIT       27 /* max cwnd increment cap */
+#define	TCPCTL_MAXID	       28
 
 #define	TCPCTL_NAMES { \
 	{ 0, 0 }, \

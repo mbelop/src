@@ -118,6 +118,8 @@ struct tcphdr {
 
 #define	TCP_MAX_WINSHIFT	14	/* maximum window shift */
 
+#define	TCP_CA_NAME_MAX	16	/* max congestion control name length */
+
 #endif /* __BSD_VISIBLE */
 
 /*
