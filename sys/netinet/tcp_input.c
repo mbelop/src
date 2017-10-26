@@ -1580,6 +1580,9 @@ trimthenstep6:
 					 */
 					if (tp->sack_enable &&
 					    IN_FASTRECOVERY(tp)) {
+						printf("%s:%d: fastrec %#x\n",
+						    __func__, __LINE__,
+						    tp->t_flags);
 						tp->t_dupacks = 0;
 						break;
 					} else if (!tp->sack_enable &&
@@ -1631,7 +1634,8 @@ trimthenstep6:
 					tp->snd_cwnd += tp->t_maxseg;
 					(void) tcp_output(tp);
 					goto drop;
-				}
+				} else
+					printf("%s: rfc3042!\n", __func__);
 			}
 			break;
 		} else {
