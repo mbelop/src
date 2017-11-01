@@ -93,6 +93,7 @@
 #include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
+#include <netinet/tcp_cc.h>
 #include <netinet/tcp_debug.h>
 
 #if NPF > 0
@@ -1533,26 +1534,11 @@ trimthenstep6:
 				 * Kludge snd_nxt & the congestion
 				 * window so we send only this one
 				 * packet.
-				 *
-				 * We know we're losing at the current
-				 * window size so do congestion avoidance
-				 * (set ssthresh to half the current window
-				 * and pull our congestion window back to
-				 * the new ssthresh).
-				 *
-				 * Dup acks mean that packets have left the
-				 * network (they're now cached at the receiver)
-				 * so bump cwnd by the amount in the receiver
-				 * to keep a constant cwnd packets in the
-				 * network.
 				 */
 				if (TCP_TIMER_ISARMED(tp, TCPT_REXMT) == 0)
 					tp->t_dupacks = 0;
 				else if (++tp->t_dupacks == tcprexmtthresh) {
 					tcp_seq onxt = tp->snd_nxt;
-					u_long win =
-					    ulmin(tp->snd_wnd, tp->snd_cwnd) /
-						2 / tp->t_maxseg;
 
 					if (SEQ_LT(th->th_ack, tp->snd_last)){
 						/*
@@ -1562,13 +1548,11 @@ trimthenstep6:
 						tp->t_dupacks = 0;
 						goto drop;
 					}
-					if (win < 2)
-						win = 2;
-					tp->snd_ssthresh = win * tp->t_maxseg;
+					tcp_cc_enter_fastrecovery(tp, th);
 					tp->snd_last = tp->snd_max;
+					TCP_TIMER_DISARM(tp, TCPT_REXMT);
+					tp->t_rtttime = 0;
 					if (tp->sack_enable) {
-						TCP_TIMER_DISARM(tp, TCPT_REXMT);
-						tp->t_rtttime = 0;
 #ifdef TCP_ECN
 						tp->t_flags |= TF_SEND_CWR;
 #endif
@@ -1583,8 +1567,6 @@ trimthenstep6:
 					           tp->t_maxseg * tp->t_dupacks;
 						goto drop;
 					}
-					TCP_TIMER_DISARM(tp, TCPT_REXMT);
-					tp->t_rtttime = 0;
 					tp->snd_nxt = th->th_ack;
 					tp->snd_cwnd = tp->t_maxseg;
 #ifdef TCP_ECN
@@ -1592,8 +1574,8 @@ trimthenstep6:
 #endif
 					tcpstat_inc(tcps_cwr_frecovery);
 					tcpstat_inc(tcps_sndrexmitfast);
-					(void) tcp_output(tp);
 
+					(void) tcp_output(tp);
 					tp->snd_cwnd = tp->snd_ssthresh +
 					    tp->t_maxseg * tp->t_dupacks;
 					if (SEQ_GT(onxt, tp->snd_nxt))
@@ -1628,12 +1610,7 @@ trimthenstep6:
 					tcp_newreno_partialack(tp, th);
 			} else {
 				/* Out of fast recovery */
-				tp->snd_cwnd = tp->snd_ssthresh;
-				if (tcp_seq_subtract(tp->snd_max, th->th_ack) <
-				    tp->snd_ssthresh)
-					tp->snd_cwnd =
-					    tcp_seq_subtract(tp->snd_max,
-					    th->th_ack);
+				tcp_cc_exit_fastrecovery(tp, th);
 				tp->t_dupacks = 0;
 			}
 		} else {
@@ -1645,6 +1622,18 @@ trimthenstep6:
 		}
 		acked = th->th_ack - tp->snd_una;
 		tcpstat_pkt(tcps_rcvackpack, tcps_rcvackbyte, acked);
+
+#if tcp_bad_rexmt_check
+		/*
+		 * If the last packet was a retransmit, make sure
+		 * it was not spurious.
+		 *
+		 * This will also take care of congestion window
+		 * adjustment if a last packet was recovered due to a
+		 * tail loss probe.
+		 */
+		tcp_bad_rexmt_check(tp, th, &to);
+#endif
 
 		/*
 		 * If we have a timestamp reply, update smoothed
@@ -1681,13 +1670,7 @@ trimthenstep6:
 		if (tcp_do_ecn && (tiflags & TH_ECE)) {
 			if ((tp->t_flags & TF_ECN_PERMIT) &&
 			    SEQ_GEQ(tp->snd_una, tp->snd_last)) {
-				u_int win;
-
-				win = min(tp->snd_wnd, tp->snd_cwnd) / tp->t_maxseg;
-				if (win > 1) {
-					tp->snd_ssthresh = win / 2 * tp->t_maxseg;
-					tp->snd_cwnd = tp->snd_ssthresh;
-					tp->snd_last = tp->snd_max;
+				if (tcp_cc_cong_experienced(tp)) {
 					tp->t_flags |= TF_SEND_CWR;
 					tcpstat_inc(tcps_cwr_ecn);
 				}
@@ -1697,21 +1680,10 @@ trimthenstep6:
 #endif /* TCP_ECN */
 		/*
 		 * When new data is acked, open the congestion window.
-		 * If the window gives us less than ssthresh packets
-		 * in flight, open exponentially (maxseg per packet).
-		 * Otherwise open linearly: maxseg per window
-		 * (maxseg^2 / cwnd per packet).
+		 * The specifics of how this is achieved are up to the
+		 * congestion control algorithm.
 		 */
-		{
-		u_int cw = tp->snd_cwnd;
-		u_int incr = tp->t_maxseg;
-
-		if (cw > tp->snd_ssthresh)
-			incr = incr * incr / cw;
-		if (tp->t_dupacks < tcprexmtthresh)
-			tp->snd_cwnd = ulmin(cw + incr,
-			    TCP_MAXWIN << tp->snd_scale);
-		}
+		tcp_cc_ack_received(tp, th);
 		ND6_HINT(tp);
 		if (acked > so->so_snd.sb_cc) {
 			tp->snd_wnd -= so->so_snd.sb_cc;
@@ -2876,16 +2848,11 @@ tcp_mss(struct tcpcb *tp, int offer)
 			tp->snd_cwnd = ulmax((tp->snd_cwnd / tp->t_maxseg) *
 					     mss, mss);
 		}
-	} else if (tcp_do_rfc3390 == 2) {
-		/* increase initial window  */
-		tp->snd_cwnd = ulmin(10 * mss, ulmax(2 * mss, 14600));
-	} else if (tcp_do_rfc3390) {
-		/* increase initial window  */
-		tp->snd_cwnd = ulmin(4 * mss, ulmax(2 * mss, 4380));
-	} else
-		tp->snd_cwnd = mss;
-
-	tp->t_maxseg = mss;
+		tp->t_maxseg = mss;
+	} else {
+		tp->t_maxseg = mss;
+		tcp_cc_init_connection(tp);
+	}
 
 	return (offer != -1 ? mssopt : mss);
 }

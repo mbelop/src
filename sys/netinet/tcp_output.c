@@ -94,6 +94,7 @@
 #include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
+#include <netinet/tcp_cc.h>
 #include <netinet/tcp_debug.h>
 
 #ifdef notyet
@@ -228,13 +229,9 @@ tcp_output(struct tcpcb *tp)
 	 * to send, then transmit; otherwise, investigate further.
 	 */
 	idle = (tp->t_flags & TF_LASTIDLE) || (tp->snd_max == tp->snd_una);
-	if (idle && (tcp_now - tp->t_rcvtime) >= tp->t_rxtcur)
-		/*
-		 * We have been idle for "a while" and no acks are
-		 * expected to clock out any data we send --
-		 * slow start to get ack "clock" running again.
-		 */
-		tp->snd_cwnd = 2 * tp->t_maxseg;
+	if (idle && (tcp_now - tp->t_rcvtime) >= tp->t_rxtcur) {
+		tcp_cc_after_idle(tp);
+	}
 
 	/* remember 'idle' for next invocation of tcp_output */
 	if (idle && soissending(so)) {
