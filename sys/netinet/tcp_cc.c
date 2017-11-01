@@ -66,6 +66,8 @@
  * Research Laboratory (NRL).
  */
 
+#define TCP_DEBUG
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/mbuf.h>
@@ -74,6 +76,10 @@
 #include <sys/socketvar.h>
 #include <sys/kernel.h>
 #include <sys/syslog.h>
+
+#ifdef TCP_DEBUG
+#include <lib/libkern/libkern.h>
+#endif
 
 #include <net/if.h>
 #include <net/if_var.h>
@@ -84,12 +90,58 @@
 #include <netinet/in_pcb.h>
 #include <netinet/ip_var.h>
 #include <netinet/tcp.h>
+#define TCPSTATES
+#include <netinet/tcp_fsm.h>
 #include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcp_cc.h>
 
 extern int tcprexmtthresh;
+
+#ifdef TCP_DEBUG
+void
+tcp_cc_trace(struct tcpcb *tp, struct tcphdr *th, int event)
+{
+	struct inpcb *inp = tp->t_inpcb;
+	char daddr[INET6_ADDRSTRLEN], saddr[INET6_ADDRSTRLEN];
+	ushort dport, sport;
+	struct timeval tv;
+	uint64_t tstamp;
+
+	getmicrouptime(&tv);
+	tstamp = tv.tv_sec * 1000000 + tv.tv_usec;
+
+	if (inp->inp_flags & INP_IPV6) {
+		inet_ntop(AF_INET6, (void *)&inp->inp_faddr6, daddr,
+		    INET6_ADDRSTRLEN);
+		inet_ntop(AF_INET6, (void *)&inp->inp_laddr6, saddr,
+		    INET6_ADDRSTRLEN);
+	} else {
+		inet_ntop(AF_INET, (void *)&inp->inp_faddr.s_addr, daddr,
+		    INET6_ADDRSTRLEN);
+		inet_ntop(AF_INET, (void *)&inp->inp_laddr.s_addr, saddr,
+		    INET6_ADDRSTRLEN);
+	}
+	dport = ntohs(inp->inp_fport);
+	sport = ntohs(inp->inp_lport);
+
+	log(LOG_DEBUG, "%llu: %s:%u -> %s:%u state %s event %d\n",
+	    tstamp, saddr, sport, daddr, dport, tcpstates[tp->t_state], event);
+	addlog("\trcv_(nxt,wnd,up) (%x,%lx,%x) snd_(una,nxt,max) (%x,%x,%x)\n",
+	    tp->rcv_nxt, tp->rcv_wnd, tp->rcv_up, tp->snd_una, tp->snd_nxt,
+	    tp->snd_max);
+	addlog("\tsnd_(wl1,wl2,wnd,cwnd) (%x,%x,%lx,%lx)\n", tp->snd_wl1,
+	    tp->snd_wl2, tp->snd_wnd, tp->snd_cwnd);
+}
+#else
+void
+tcp_cc_trace(struct tcpcb *tp __unused, struct tcphdr *th __unused,
+    int event __unused)
+{
+	/* do nothing */
+}
+#endif
 
 void
 tcp_cc_init_connection(struct tcpcb *tp)

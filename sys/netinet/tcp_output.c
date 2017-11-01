@@ -231,6 +231,7 @@ tcp_output(struct tcpcb *tp)
 	idle = (tp->t_flags & TF_LASTIDLE) || (tp->snd_max == tp->snd_una);
 	if (idle && (tcp_now - tp->t_rcvtime) >= tp->t_rxtcur) {
 		tcp_cc_after_idle(tp);
+		tcp_cc_trace(tp, NULL, TCP_CC_IDLE_TIMEOUT);
 	}
 
 	/* remember 'idle' for next invocation of tcp_output */

@@ -1565,6 +1565,8 @@ trimthenstep6:
 						(void) tcp_output(tp);
 						tp->snd_cwnd = tp->snd_ssthresh+
 					           tp->t_maxseg * tp->t_dupacks;
+						tcp_cc_trace(tp, th,
+						    TCP_CC_ENTER_FASTRECOVERY);
 						goto drop;
 					}
 					tp->snd_nxt = th->th_ack;
@@ -1580,9 +1582,13 @@ trimthenstep6:
 					    tp->t_maxseg * tp->t_dupacks;
 					if (SEQ_GT(onxt, tp->snd_nxt))
 						tp->snd_nxt = onxt;
+					tcp_cc_trace(tp, th,
+					    TCP_CC_ENTER_FASTRECOVERY);
 					goto drop;
 				} else if (tp->t_dupacks > tcprexmtthresh) {
 					tp->snd_cwnd += tp->t_maxseg;
+					tcp_cc_trace(tp, th,
+					    TCP_CC_IN_FASTRECOVERY);
 					(void) tcp_output(tp);
 					goto drop;
 				}
@@ -1608,9 +1614,11 @@ trimthenstep6:
 					tcp_sack_partialack(tp, th);
 				else
 					tcp_newreno_partialack(tp, th);
+				tcp_cc_trace(tp, th, TCP_CC_PARTIAL_ACK);
 			} else {
 				/* Out of fast recovery */
 				tcp_cc_exit_fastrecovery(tp, th);
+				tcp_cc_trace(tp, th, TCP_CC_EXIT_FASTRECOVERY);
 				tp->t_dupacks = 0;
 			}
 		} else {
@@ -1673,7 +1681,11 @@ trimthenstep6:
 				if (tcp_cc_cong_experienced(tp)) {
 					tp->t_flags |= TF_SEND_CWR;
 					tcpstat_inc(tcps_cwr_ecn);
-				}
+					tcp_cc_trace(tp, th,
+					    TCP_CC_CONG_EXPERIENCED);
+				} else
+					tcp_cc_trace(tp, th,
+					    TCP_CC_ECN_RECEIVED);
 			}
 			tcpstat_inc(tcps_ecn_rcvece);
 		}
@@ -1684,6 +1696,7 @@ trimthenstep6:
 		 * congestion control algorithm.
 		 */
 		tcp_cc_ack_received(tp, th);
+		/* tcp_cc_trace(tp, th, TCP_CC_ACK_RECEIVED); */
 		ND6_HINT(tp);
 		if (acked > so->so_snd.sb_cc) {
 			tp->snd_wnd -= so->so_snd.sb_cc;
@@ -2847,11 +2860,13 @@ tcp_mss(struct tcpcb *tp, int offer)
 			 */
 			tp->snd_cwnd = ulmax((tp->snd_cwnd / tp->t_maxseg) *
 					     mss, mss);
+			tcp_cc_trace(tp, NULL, TCP_CC_CWND_PMTU_SHRINK);
 		}
 		tp->t_maxseg = mss;
 	} else {
 		tp->t_maxseg = mss;
 		tcp_cc_init_connection(tp);
+		tcp_cc_trace(tp, NULL, TCP_CC_CWND_INIT);
 	}
 
 	return (offer != -1 ? mssopt : mss);
