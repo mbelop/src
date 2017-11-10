@@ -1472,6 +1472,10 @@ trimthenstep6:
 	case TCPS_CLOSING:
 	case TCPS_LAST_ACK:
 	case TCPS_TIME_WAIT:
+		if (SEQ_GT(th->th_ack, tp->snd_max)) {
+			tcpstat_inc(tcps_rcvacktoomuch);
+			goto dropafterack_ratelim;
+		}
 #ifdef TCP_ECN
 		/*
 		 * if we receive ECE and are not already in recovery phase,
@@ -1660,10 +1664,6 @@ trimthenstep6:
 			 * were not in fast recovery.
 			 */
 			tp->t_dupacks = 0;
-		}
-		if (SEQ_GT(th->th_ack, tp->snd_max)) {
-			tcpstat_inc(tcps_rcvacktoomuch);
-			goto dropafterack_ratelim;
 		}
 		acked = th->th_ack - tp->snd_una;
 		tcpstat_pkt(tcps_rcvackpack, tcps_rcvackbyte, acked);
