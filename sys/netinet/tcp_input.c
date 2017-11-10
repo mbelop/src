@@ -1478,28 +1478,6 @@ trimthenstep6:
 		}
 #ifdef TCP_ECN
 		/*
-		 * if we receive ECE and are not already in recovery phase,
-		 * reduce cwnd by half but don't slow-start.
-		 * advance snd_last to snd_max not to reduce cwnd again
-		 * until all outstanding packets are acked.
-		 */
-		if (tcp_do_ecn && (tiflags & TH_ECE)) {
-			if ((tp->t_flags & TF_ECN_PERMIT) &&
-			    SEQ_GEQ(tp->snd_una, tp->snd_last)) {
-				u_int win;
-
-				win = min(tp->snd_wnd, tp->snd_cwnd) / tp->t_maxseg;
-				if (win > 1) {
-					tp->snd_ssthresh = win / 2 * tp->t_maxseg;
-					tp->snd_cwnd = tp->snd_ssthresh;
-					tp->snd_last = tp->snd_max;
-					tp->t_flags |= TF_SEND_CWR;
-					tcpstat_inc(tcps_cwr_ecn);
-				}
-			}
-			tcpstat_inc(tcps_ecn_rcvece);
-		}
-		/*
 		 * if we receive CWR, we know that the peer has reduced
 		 * its congestion window.  stop sending ecn-echo.
 		 */
@@ -1693,6 +1671,30 @@ trimthenstep6:
 			tp->t_flags |= TF_NEEDOUTPUT;
 		} else if (TCP_TIMER_ISARMED(tp, TCPT_PERSIST) == 0)
 			TCP_TIMER_ARM(tp, TCPT_REXMT, tp->t_rxtcur);
+#ifdef TCP_ECN
+		/*
+		 * if we receive ECE and are not already in recovery phase,
+		 * reduce cwnd by half but don't slow-start.
+		 * advance snd_last to snd_max not to reduce cwnd again
+		 * until all outstanding packets are acked.
+		 */
+		if (tcp_do_ecn && (tiflags & TH_ECE)) {
+			if ((tp->t_flags & TF_ECN_PERMIT) &&
+			    SEQ_GEQ(tp->snd_una, tp->snd_last)) {
+				u_int win;
+
+				win = min(tp->snd_wnd, tp->snd_cwnd) / tp->t_maxseg;
+				if (win > 1) {
+					tp->snd_ssthresh = win / 2 * tp->t_maxseg;
+					tp->snd_cwnd = tp->snd_ssthresh;
+					tp->snd_last = tp->snd_max;
+					tp->t_flags |= TF_SEND_CWR;
+					tcpstat_inc(tcps_cwr_ecn);
+				}
+			}
+			tcpstat_inc(tcps_ecn_rcvece);
+		}
+#endif /* TCP_ECN */
 		/*
 		 * When new data is acked, open the congestion window.
 		 * If the window gives us less than ssthresh packets
