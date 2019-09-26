@@ -977,6 +977,7 @@ hv_channel_scan(struct hv_softc *sc)
 {
 	struct vmbus_chanmsg_hdr hdr;
 	struct vmbus_chanmsg_choffer rsp;
+	struct hv_msg msg;
 	struct hv_offer *co;
 
 	SIMPLEQ_INIT(&sc->sc_offers);
@@ -991,8 +992,9 @@ hv_channel_scan(struct hv_softc *sc)
 		return (-1);
 	}
 
-	hv_wait(sc, hv_channel_scan_done, (struct hv_msg *)&hdr,
-	    &sc->sc_offers, "hvscan");
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_flags |= MSGF_NOQUEUE | MSGF_NOSLEEP;
+	hv_wait(sc, hv_channel_scan_done, &msg, &sc->sc_offers, "hvscan");
 
 	TAILQ_INIT(&sc->sc_channels);
 	mtx_init(&sc->sc_channelck, IPL_NET);
